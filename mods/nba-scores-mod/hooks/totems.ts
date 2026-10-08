@@ -74,11 +74,11 @@ export const TOTEMS: Record<string, Totem> = {
     ),
   },
   DAL: {
-    alt: '牛仔帽',
+    alt: '籃球與馬頭',
     badgeBg: '#00538C',
     badgeFg: '#E6F1FB',
     svg: svg(
-      '<path d="M6 12.500c0-5.500 1-8.500 2.500-8.500c.8 0 1 .8 1.500.8s.7-.8 1.500-.8c1.500 0 2.500 3 2.500 8.500z" fill="#2F7FD9"/><path d="M0.800 10.500c2.500 3.500 6 3.500 9.200 3.500s6.700 0 9.200-3.500c-.5 4.500-4.500 6.500-9.200 6.500s-8.700-2-9.200-6.500z" fill="#2F7FD9"/><path d="M6.100 10.500h7.800l.1 2H6z" fill="#C4CED4"/>',
+      '<circle cx="10" cy="10" r="9" fill="#2B6FD6"/><path d="M10 1v18M1 10h18" fill="none" stroke="#1B4FA3" stroke-width="0.7"/><path d="M11.400 2.800L12.700 5.500C15 8 16.200 11.800 16 16.600L10.900 17.700C10.700 15.500 10.100 13.800 9.100 12.600L6.700 15L4.500 14.100L4.700 12.200L9.300 6.200z" fill="#E4E7EC"/><path d="M12.700 5.500C15 8 16.200 11.800 16 16.600l-2.300.5c.2-3.900-.5-7.700-2.300-10.500z" fill="#9AA3B2"/><circle cx="8.900" cy="9.300" r=".7" fill="#1B4FA3"/>',
     ),
   },
   DEN: {
@@ -114,11 +114,11 @@ export const TOTEMS: Record<string, Totem> = {
     ),
   },
   IND: {
-    alt: 'P',
+    alt: 'P 與籃球',
     badgeBg: '#1A3A6B',
     badgeFg: '#FDBB30',
     svg: svg(
-      '<path d="M5 1.700h6.300a5 5 0 0 1 0 10H9.500V17H5zM9.500 5.600v2.200h1.500a1.100 1.100 0 0 0 0-2.200z" transform="translate(1.5 1.5)" fill="#3F7FE0" fill-rule="evenodd"/><path d="M5 1.700h6.300a5 5 0 0 1 0 10H9.500V17H5zM9.500 5.600v2.200h1.500a1.100 1.100 0 0 0 0-2.200z" transform="translate(0 0)" fill="#FDBB30" fill-rule="evenodd"/>',
+      '<path d="M4 2h7a6 6 0 0 1 0 12H8.5v4H4z" fill="#2A56A8" stroke="#B9C0CC" stroke-width="0.7" stroke-linejoin="round"/><circle cx="11.2" cy="8" r="3.7" fill="#FDBB30"/><path d="M11.2 4.3v7.4M7.5 8h7.4M8.6 5.400c1.500 1.500 1.500 3.700 0 5.200M13.800 5.400c-1.500 1.500-1.500 3.700 0 5.200" fill="none" stroke="#2A56A8" stroke-width="0.55"/>',
     ),
   },
   LAC: {
@@ -190,7 +190,7 @@ export const TOTEMS: Record<string, Totem> = {
     badgeBg: '#007AC1',
     badgeFg: '#E6F1FB',
     svg: svg(
-      '<path d="M5 10.5a4 4 0 0 1 .8-7.9a5 5 0 0 1 9.2.9a3.6 3.6 0 0 1 0 7z" fill="#2B8FD6"/><path d="M11.5 8l-4.5 6.5h3l-1 5L14 12.5h-3l1.2-4.5z" fill="#FDBB30"/>',
+      '<path d="M12.5 1L4.5 11.5h4.3L7.3 19l8.7-11.3h-4.6L13.6 1z" transform="translate(1.2 0.8)" fill="#EF5B2B"/><path d="M12.5 1L4.5 11.5h4.3L7.3 19l8.7-11.3h-4.6L13.6 1z" fill="#FDBB30"/>',
     ),
   },
   ORL: {
@@ -218,11 +218,11 @@ export const TOTEMS: Record<string, Totem> = {
     ),
   },
   POR: {
-    alt: '開路斧',
+    alt: '兩道弧線',
     badgeBg: '#C8102E',
     badgeFg: '#FCEBEB',
     svg: svg(
-      '<path d="M3.200 17.300L12.300 4l1.900 1.300L5.100 18.600z" fill="#B4B2A9"/><path d="M10.500 2.300l5.500 3.700c1.700 1.200 2.700 3.300 2.200 5.500c-1.600-1.600-3.800-2.200-6-1.600L8.700 7.500z" fill="#E03A3E"/>',
+      '<g fill="none" stroke-width="2.3" stroke-linecap="butt"><path d="M3.2 11.5V8a5 5 0 0 1 5-5H17" stroke="#E03A3E"/><path d="M7 11.5V8.8a2 2 0 0 1 2-2H17" stroke="#E03A3E"/><path d="M16.8 8.5V12a5 5 0 0 1-5 5H3" stroke="#B4B2A9"/><path d="M13 8.5v2.700a2 2 0 0 1-2 2H3" stroke="#B4B2A9"/></g>',
     ),
   },
   SAC: {
