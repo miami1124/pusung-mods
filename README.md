@@ -77,4 +77,4 @@ Pu-Sung Chang · [GitHub](https://github.com/miami1124) · Instagram [@pusung.ai
 
 ## License
 
-[MIT](LICENSE). Use it and modify it freely. Just keep the copyright notice.
+[MIT](LICENSE). Use it and modify it freely. Just keep the copyright notice. The license covers the code; the team totems are fan art and are not for commercial use.

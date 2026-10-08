@@ -83,7 +83,7 @@ Each of the 30 teams has a small two-color icon, shown next to the badge in the 
 
 ![The 30 team totems](../../docs/totems.png)
 
-They are small original icons, each drawn from the team's logo or the meaning of its name: a flame for Miami, a clover for Boston, a rocket for Houston.
+They are small icons I made myself for each team: a flame for Miami, a clover for Boston, a rocket for Houston.
 
 ## Desktop app and terminal
 
@@ -140,6 +140,8 @@ Mods are a new Claude Code feature and the API underneath is still changing, so 
 ## Disclaimer
 
 This is an unofficial fan project. It is not affiliated with, endorsed by, or sponsored by the NBA, any NBA team, or ESPN. Team names and abbreviations belong to their owners and are used only to identify the teams. Scores come from ESPN's public endpoints and are provided as is, for personal, non-commercial use.
+
+The MIT license covers this project's code only. The team totems are fan art, and each team's name and identity belong to that team. Please do not use the totems commercially.
 
 ## License
 
