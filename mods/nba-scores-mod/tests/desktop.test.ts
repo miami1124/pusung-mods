@@ -693,3 +693,121 @@ test('desktop：快速連點兩場，先點的那場慢回來時不能蓋掉後�
   expect(tree.includes('Slow One')).toBe(false)
   expect(tree.includes('Loading player stats')).toBe(false)
 })
+
+const ok = (body: unknown) => ({ value: { ok: true, status: 200, text: JSON.stringify(body) } })
+const refused = { value: { ok: false, status: 429, text: '' } }
+
+test('球員數據被 ESPN 拒絕（429）後，明細和比分都至少退開 5 分鐘', async ($, on) => {
+  let summaryFetches = 0
+  let scoreboardFetches = 0
+  on('http.fetch', (_$: unknown, e: any) => {
+    if (String(e.url).includes('summary')) {
+      summaryFetches += 1
+      return refused
+    }
+    scoreboardFetches += 1
+    return ok(SCOREBOARD)
+  })
+  const clock = mock.clock(on, { now: Date.parse('2026-10-06T23:30Z') })
+  baseSetup(on)
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true } as any)
+  const ui = await $.ui.mount({ plugin: 'nba-scores-mod', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  // 點開正在打的那場，球員數據被拒絕
+  await ui.press({ key: 'nba-scores-mod:open:2' })
+  expect(summaryFetches).toBe(1)
+  expect(scoreboardFetches).toBe(1)
+  // 接下來 4 分鐘，明細和比分都不能再去敲
+  await clock.advance(4 * 60_000)
+  expect(summaryFetches).toBe(1)
+  expect(scoreboardFetches).toBe(1)
+  // 過了 5 分鐘才恢復
+  await clock.advance(90_000)
+  expect(scoreboardFetches).toBeGreaterThan(1)
+  expect(summaryFetches).toBeGreaterThan(1)
+})
+
+test('今天沒比賽、問下一批賽程時被拒絕：要講抓取失敗並退開，不能當成沒比賽', { options: { language: 'English' } }, async ($, on) => {
+  let fetches = 0
+  on('http.fetch', (_$: unknown, e: any) => {
+    fetches += 1
+    // 指定日期的那次回空的；不帶日期的備援被拒絕
+    return String(e.url).includes('dates=') ? ok({ events: [] }) : refused
+  })
+  const clock = mock.clock(on, { now: Date.parse('2026-10-06T23:30Z') })
+  baseSetup(on)
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true } as any)
+  const ui = await $.ui.mount({ plugin: 'nba-scores-mod', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  expect(fetches).toBe(2)
+  const tree = JSON.stringify(await ui.drawn())
+  expect(tree.includes('429')).toBe(true)
+  expect(tree.includes('No games')).toBe(false)
+  await clock.advance(4 * 60_000)
+  expect(fetches).toBe(2)
+  await clock.advance(90_000)
+  expect(fetches).toBe(4)
+})
+
+test('desktop：點 A、點 B、再點回 A，第一次 A 慢回來的舊資料不能蓋掉第二次 A 的新資料', { options: { language: 'English' } }, async ($, on) => {
+  const summaryFor = (name: string) => ({
+    boxscore: {
+      players: ['UTAH', 'DEN', 'NO', 'MIA'].map(abbr => ({
+        team: { abbreviation: abbr },
+        statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete(name, 20)] }],
+      })),
+    },
+  })
+  let releaseSlow: () => void = () => {}
+  const slow = new Promise<void>(resolve => {
+    releaseSlow = resolve
+  })
+  let firstGameFetches = 0
+  on('http.fetch', async (_$: unknown, e: any) => {
+    const url = String(e.url)
+    if (url.includes('event=1')) {
+      firstGameFetches += 1
+      if (firstGameFetches > 1) return ok(summaryFor('Fresh One'))
+      await slow
+      return ok(summaryFor('Stale One'))
+    }
+    if (url.includes('event=2')) return ok(summaryFor('Fast Two'))
+    return ok(SCOREBOARD)
+  })
+  on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+  on('clock.every', () => ({ value: undefined }))
+  baseSetup(on)
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true } as any)
+  const ui = await $.ui.mount({ plugin: 'nba-scores-mod', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+
+  const a1 = ui.press({ key: 'nba-scores-mod:open:1' })
+  const b = ui.press({ key: 'nba-scores-mod:open:2' })
+  const a2 = ui.press({ key: 'nba-scores-mod:open:1' })
+  setTimeout(releaseSlow, 150)
+  await Promise.all([a1, b, a2])
+  await new Promise(resolve => setTimeout(resolve, 50))
+  expect(firstGameFetches).toBe(2)
+  const tree = JSON.stringify(await ui.drawn())
+  expect(tree.includes('Fresh One')).toBe(true)
+  expect(tree.includes('Stale One')).toBe(false)
+})
+
+test('整條收起來之後，不再抓看不到的球員數據', async ($, on) => {
+  let summaryFetches = 0
+  on('http.fetch', (_$: unknown, e: any) => {
+    if (String(e.url).includes('summary')) {
+      summaryFetches += 1
+      return ok(SUMMARY)
+    }
+    return ok(SCOREBOARD)
+  })
+  const clock = mock.clock(on, { now: Date.parse('2026-10-06T23:30Z') })
+  baseSetup(on)
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true } as any)
+  const ui = await $.ui.mount({ plugin: 'nba-scores-mod', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  await ui.press({ key: 'nba-scores-mod:open:2' })
+  // 開著的時候會跟著比分更新
+  await clock.advance(46_000)
+  expect(summaryFetches).toBe(2)
+  await ui.press({ key: 'nba-scores-mod:collapse' })
+  await clock.advance(3 * 60_000)
+  expect(summaryFetches).toBe(2)
+})

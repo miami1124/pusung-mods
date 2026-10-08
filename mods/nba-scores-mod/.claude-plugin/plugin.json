@@ -1,6 +1,6 @@
 {
   "name": "nba-scores-mod",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Today's NBA scoreboard above the Claude Code prompt. Pick your team and it gets its own totem and team color; scores update live while games are on. Live data from ESPN's public endpoints, no key and no account. Zero model tokens.",
   "author": {
     "name": "Pu-Sung Chang",

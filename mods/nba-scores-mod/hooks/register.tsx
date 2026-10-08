@@ -131,7 +131,13 @@ const SETTINGS_OPEN_KEY = 'settingsOpen'
 const SPOILER_OPTIONS = ['Off', 'On']
 
 /** 點開那一場的球員數據。id 是「這份資料屬於哪一場」，跟目前點開的不同就不畫 */
-type BoxState = { id?: string; teams?: TeamBox[]; error?: string; at: number }
+type BoxState = { id?: string; teams?: TeamBox[]; error?: string; at: number; seq: number }
+
+/**
+ * ESPN 明確拒絕之後，到 until 這個時間點之前所有請求都不發（比分、下一批賽程、球員數據共用）。
+ * 只有比分退開、球員數據照敲，等於沒退。
+ */
+type Backoff = { until: number; reason: string }
 
 /**
  * 抓一場的球員數據寫進 state，然後重畫。成功失敗都會寫——失敗要讓畫面講出來，
@@ -142,19 +148,34 @@ async function refreshBox(
   state: BoxState,
   gameId: string,
   isStillOpen: () => boolean,
+  backoff: Backoff,
 ): Promise<void> {
+  // 每次請求一個流水號，回來時不是最新那次就丟掉（見下面）
+  state.seq += 1
+  const mine = state.seq
   let teams: TeamBox[] | undefined
   let error: string | undefined
-  try {
-    const res = await $.http.fetch(summaryUrl(gameId), { headers: espnHeaders() })
-    if (!res.ok) throw new Error(`ESPN responded ${res.status}`)
-    teams = parseBoxscore(JSON.parse(res.text))
-  } catch (err) {
-    error = String(err)
+  const startedAt = await $.clock.now()
+  if (startedAt < backoff.until) {
+    // 還在退開的期間：不發請求，直接讓畫面講原因
+    error = backoff.reason
+  } else {
+    try {
+      const res = await $.http.fetch(summaryUrl(gameId), { headers: espnHeaders() })
+      if (REJECTED_STATUS.includes(res.status)) {
+        backoff.until = startedAt + RETRY_REJECTED_MIN_MS
+        backoff.reason = `Error: ESPN responded ${res.status}`
+      }
+      if (!res.ok) throw new Error(`ESPN responded ${res.status}`)
+      teams = parseBoxscore(JSON.parse(res.text))
+    } catch (err) {
+      error = String(err)
+    }
   }
-  // 等回應的期間使用者可能已經點開別場。慢回來的舊回應不能蓋掉新那場的資料，
-  // 不然新那場會一直停在「讀取中」。
-  if (!isStillOpen()) return
+  // 等回應的期間使用者可能已經點開別場，或點開別場又點回來。慢回來的舊回應不能蓋掉
+  // 新的資料：只比對場次不夠（A → B → A 時第一次 A 的回應場次是對的，但資料是舊的），
+  // 所以還要是最新那次請求才收。
+  if (state.seq !== mine || !isStillOpen()) return
   state.teams = teams
   state.error = error
   state.id = gameId
@@ -306,7 +327,8 @@ export const register: Register = (on, options) => {
   }
   /** 目前點開看每節比分的那一場。只放記憶體，重開就收回去 */
   let openId: string | undefined
-  const boxState: BoxState = { at: 0 }
+  const boxState: BoxState = { at: 0, seq: 0 }
+  const backoff: Backoff = { until: 0, reason: '' }
 
   on('session.start', async ($, e, next) => {
     const r = await next(e)
@@ -355,12 +377,13 @@ export const register: Register = (on, options) => {
         // 這天沒有比賽（休賽期、全明星週末）就問 ESPN 下一批是什麼
         if (fetched.games.length === 0 && config.date === '') {
           const fb = await $.http.fetch(SCOREBOARD_URL, { headers: espnHeaders() })
-          if (fb.ok) {
-            const parsed = parseScoreboard(JSON.parse(fb.text), now)
-            if (parsed.games.length > 0) {
-              fetched = parsed
-              showingNext = true
-            }
+          // 這一次失敗也是失敗：要記下來、被拒絕也要退開，不能當成「今天沒比賽」帶過
+          rejected = REJECTED_STATUS.includes(fb.status)
+          if (!fb.ok) throw new Error(`ESPN responded ${fb.status}`)
+          const parsed = parseScoreboard(JSON.parse(fb.text), now)
+          if (parsed.games.length > 0) {
+            fetched = parsed
+            showingNext = true
           }
         }
         // 跟上一次抓到的比，哪一邊分數變多了就記下來，畫面會亮幾秒
@@ -395,6 +418,10 @@ export const register: Register = (on, options) => {
               )
           : nextFetchDelay(slate, showingNext, now)
       nextFetchAt = now + every
+      if (rejected) {
+        backoff.until = now + every
+        backoff.reason = lastError ?? ''
+      }
 
       if (!config.log || !home) return
       if (logFile === '') logFile = logPath(home, now)
@@ -425,14 +452,27 @@ export const register: Register = (on, options) => {
     })
     $.clock.every(TICK_MS, async () => {
       const now = await $.clock.now()
-      // 點開的那場如果正在打，球員數據跟著比分的頻率更新；打完的抓一次就夠
-      const openGame = slate?.games.find(g => g.id === openId)
-      if (openGame?.state === 'in' && boxState.id === openGame.id && now - boxState.at >= LIVE_EVERY_MS) {
-        await refreshBox($, boxState, openGame.id, () => openId === openGame.id)
+      // ESPN 剛拒絕過：這段時間什麼都不抓
+      if (now < backoff.until) return
+      // 比分先抓，球員數據排後面：比分才是主角，不能被明細的請求拖住或害它重新退開
+      if (now >= nextFetchAt) {
+        await loadConfig()
+        await fetchSlate()
+        // 抓完就重畫，不然新比分要等到別的東西觸發重畫才會出現
+        $.ui.invalidate('ui.render')
       }
-      if (now < nextFetchAt) return
-      await loadConfig()
-      await fetchSlate()
+      // 點開的那場如果正在打，球員數據跟著比分的頻率更新；打完的抓一次就夠。
+      // 整條收起來時看不到明細，就不要抓。
+      const openGame = slate?.games.find(g => g.id === openId)
+      if (
+        !collapsed &&
+        now >= backoff.until &&
+        openGame?.state === 'in' &&
+        boxState.id === openGame.id &&
+        now - boxState.at >= LIVE_EVERY_MS
+      ) {
+        await refreshBox($, boxState, openGame.id, () => openId === openGame.id, backoff)
+      }
     })
 
     return r
@@ -580,9 +620,9 @@ export const register: Register = (on, options) => {
                 onPress={() => {
                   openId = g.id === openId ? undefined : g.id
                   $.ui.invalidate('ui.render')
-                  if (openId !== undefined && boxState.id !== openId) {
+                  if (openId !== undefined && (boxState.id !== openId || boxState.error !== undefined)) {
                     const picked = openId
-                    void refreshBox($, boxState, picked, () => openId === picked)
+                    void refreshBox($, boxState, picked, () => openId === picked, backoff)
                   }
                 }}
               />
@@ -869,9 +909,9 @@ export const register: Register = (on, options) => {
               onPress={() => {
                 openId = g.id === openId ? undefined : g.id
                 $.ui.invalidate('ui.render')
-                if (openId !== undefined && boxState.id !== openId) {
+                if (openId !== undefined && (boxState.id !== openId || boxState.error !== undefined)) {
                     const picked = openId
-                    void refreshBox($, boxState, picked, () => openId === picked)
+                    void refreshBox($, boxState, picked, () => openId === picked, backoff)
                   }
               }}
             />
