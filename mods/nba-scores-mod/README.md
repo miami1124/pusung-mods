@@ -39,11 +39,17 @@ claude plugin install nba-scores-mod@pusung-mods
 
 Then **quit Claude Code completely and open it again**. In the desktop app that means Cmd+Q, not just closing the window.
 
-To remove it:
+To remove it, uninstall the mod and then drop the marketplace:
 
 ```sh
 claude plugin uninstall nba-scores-mod@pusung-mods
 ```
+
+```sh
+claude plugin marketplace remove pusung-mods
+```
+
+Restart Claude Code and the band is gone. The mod leaves no files of its own behind.
 
 ## Requirements
 

@@ -39,11 +39,17 @@ claude plugin install nba-scores-mod@pusung-mods
 
 接著**把 Claude Code 完全關掉再重開**。桌面版要按 Cmd+Q，只關視窗不算。
 
-移除：
+移除：先移除 mod，再把市集拿掉。
 
 ```sh
 claude plugin uninstall nba-scores-mod@pusung-mods
 ```
+
+```sh
+claude plugin marketplace remove pusung-mods
+```
+
+重開 Claude Code 帶子就不見了。這個 mod 自己不會在你電腦上留下任何檔案。
 
 ## 需求
 
