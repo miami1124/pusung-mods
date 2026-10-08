@@ -1,0 +1,9 @@
+{
+  "_comment": "Optional. Copy to ~/.claude/nba-scores-mod.json and keep only the fields you want to change. Pick your team and language with /config instead.",
+  "_spoilerFree_comment": "Hide the score of finished games until you click Reveal.",
+  "spoilerFree": false,
+  "_log_comment": "Write one line per fetch to ~/.claude/nba-scores-mod.<start time>.log. For debugging only.",
+  "log": false,
+  "_date_comment": "Pin the band to one day (YYYYMMDD). For development during the off-season.",
+  "date": ""
+}

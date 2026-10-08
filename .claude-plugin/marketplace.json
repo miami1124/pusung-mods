@@ -1,0 +1,18 @@
+{
+  "name": "pusung-mods",
+  "owner": {
+    "name": "Pu-Sung Chang",
+    "url": "https://github.com/miami1124"
+  },
+  "metadata": {
+    "description": "Claude Code mods by Pu-Sung Chang. They draw in the band above the prompt and spend zero model tokens."
+  },
+  "plugins": [
+    {
+      "name": "nba-scores-mod",
+      "source": "./mods/nba-scores-mod",
+      "category": "fun",
+      "description": "Live NBA scores above the Claude Code prompt, in the terminal and the desktop app. Pick your team and its games come first; in the desktop app it also gets its own totem and team color. Open any game for the score by quarter and top scorers. Spoiler-free mode hides final scores until you ask. English and Traditional Chinese. Data from ESPN's public endpoints, no key and no account. Zero model tokens."
+    }
+  ]
+}

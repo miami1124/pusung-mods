@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+*.log
+# Claude Code 載入 mod 時自動產生的型別檔
+**/.claude-plugin/types/
+# Claude Code 產生的型別檔（Anthropic 的檔案，不放進 repo；用 /plugin-types 重新產生）
+.claude/types/

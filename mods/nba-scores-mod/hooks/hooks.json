@@ -1,0 +1,6 @@
+{
+  "description": "nba-scores-mod: live NBA scores in the band above the prompt.",
+  "modules": [
+    "./register.tsx"
+  ]
+}
