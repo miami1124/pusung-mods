@@ -47,6 +47,12 @@ const RETRY_MS = [30_000, 60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000]
  * 電腦睡著時會連續失敗把間隔拉到 10 分鐘，醒來後比分就要等那麼久才動。
  */
 const RETRY_LIVE_MAX_MS = 60_000
+/**
+ * ESPN 明確拒絕（403 被擋、429 太頻繁）時，至少隔這麼久才再試，有比賽在打也一樣。
+ * 對方說不要的時候就退開，不要一直敲。
+ */
+const REJECTED_STATUS = [403, 429]
+const RETRY_REJECTED_MIN_MS = 5 * 60_000
 
 /**
  * 下一次該什麼時候抓。原則：比分板不會變的時候就不抓。
@@ -131,16 +137,26 @@ type BoxState = { id?: string; teams?: TeamBox[]; error?: string; at: number }
  * 抓一場的球員數據寫進 state，然後重畫。成功失敗都會寫——失敗要讓畫面講出來，
  * 不能安靜地留著上一場的數據。
  */
-async function refreshBox($: EngineInterface, state: BoxState, gameId: string): Promise<void> {
+async function refreshBox(
+  $: EngineInterface,
+  state: BoxState,
+  gameId: string,
+  isStillOpen: () => boolean,
+): Promise<void> {
+  let teams: TeamBox[] | undefined
+  let error: string | undefined
   try {
     const res = await $.http.fetch(summaryUrl(gameId), { headers: espnHeaders() })
     if (!res.ok) throw new Error(`ESPN responded ${res.status}`)
-    state.teams = parseBoxscore(JSON.parse(res.text))
-    state.error = undefined
+    teams = parseBoxscore(JSON.parse(res.text))
   } catch (err) {
-    state.teams = undefined
-    state.error = String(err)
+    error = String(err)
   }
+  // 等回應的期間使用者可能已經點開別場。慢回來的舊回應不能蓋掉新那場的資料，
+  // 不然新那場會一直停在「讀取中」。
+  if (!isStillOpen()) return
+  state.teams = teams
+  state.error = error
   state.id = gameId
   state.at = await $.clock.now()
   $.ui.invalidate('ui.render')
@@ -295,6 +311,12 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
 
+    // 不會畫帶子的情況（claude -p、VS Code、手機）就不要去抓 ESPN，白抓沒有意義
+    const input = e as { isInteractive?: boolean; surface?: string }
+    if (input.isInteractive === false) return r
+    // surface 只在確定是不支援的介面時才跳過；拿不到（null）時照常跑，免得誤傷桌面版
+    if (input.surface === 'vscode' || input.surface === 'mobile') return r
+
     collapsed = (await $.store.get(COLLAPSED_KEY)) === true
     settingsOpen = (await $.store.get(SETTINGS_OPEN_KEY)) === true
 
@@ -323,10 +345,12 @@ export const register: Register = (on, options) => {
     const fetchSlate = async () => {
       const now = await $.clock.now()
       let fetchFailed = true
+      let rejected = false
       try {
         // 沒指定日期就用算出來的「NBA 比賽日」，不要讓 ESPN 用美國的今天決定
         const day = config.date === '' ? nbaGameDay(now) : config.date
         const res = await $.http.fetch(scoreboardUrl(day), { headers: espnHeaders() })
+        rejected = REJECTED_STATUS.includes(res.status)
         if (!res.ok) throw new Error(`ESPN responded ${res.status}`)
         let fetched = parseScoreboard(JSON.parse(res.text), now)
         showingNext = false
@@ -365,10 +389,12 @@ export const register: Register = (on, options) => {
       failStreak = fetchFailed ? failStreak + 1 : 0
       const every =
         fetchFailed || !slate
-          ? Math.min(
-              RETRY_MS[Math.min(failStreak, RETRY_MS.length) - 1],
-              slate && hasLiveGame(slate) ? RETRY_LIVE_MAX_MS : Infinity,
-            )
+          ? rejected
+            ? Math.max(RETRY_MS[Math.min(failStreak, RETRY_MS.length) - 1], RETRY_REJECTED_MIN_MS)
+            : Math.min(
+                RETRY_MS[Math.min(failStreak, RETRY_MS.length) - 1],
+                slate && hasLiveGame(slate) ? RETRY_LIVE_MAX_MS : Infinity,
+              )
           : nextFetchDelay(slate, showingNext, now)
       nextFetchAt = now + every
 
@@ -404,7 +430,7 @@ export const register: Register = (on, options) => {
       // 點開的那場如果正在打，球員數據跟著比分的頻率更新；打完的抓一次就夠
       const openGame = slate?.games.find(g => g.id === openId)
       if (openGame?.state === 'in' && boxState.id === openGame.id && now - boxState.at >= LIVE_EVERY_MS) {
-        await refreshBox($, boxState, openGame.id)
+        await refreshBox($, boxState, openGame.id, () => openId === openGame.id)
       }
       if (now < nextFetchAt) return
       await loadConfig()
@@ -556,7 +582,10 @@ export const register: Register = (on, options) => {
                 onPress={() => {
                   openId = g.id === openId ? undefined : g.id
                   $.ui.invalidate('ui.render')
-                  if (openId !== undefined && boxState.id !== openId) void refreshBox($, boxState, openId)
+                  if (openId !== undefined && boxState.id !== openId) {
+                    const picked = openId
+                    void refreshBox($, boxState, picked, () => openId === picked)
+                  }
                 }}
               />
             ) : null}
@@ -575,7 +604,10 @@ export const register: Register = (on, options) => {
         )
       }
 
-      const opened = all.find(g => g.id === openId && g.state !== 'pre')
+      // 防雷遮住的那場不能畫明細：點開時還在打、後來打完了，明細會把最終比分洩漏出來
+      const opened = all.find(
+        g => g.id === openId && g.state !== 'pre' && !isMasked(g, spoilerFree(), revealed),
+      )
 
       // 設定那一排的一個下拉。選了就寫進設定，mod 會帶著新設定重新載入
       const setting = (field: string, label: string, choices: string[], value: string) => (
@@ -839,7 +871,10 @@ export const register: Register = (on, options) => {
               onPress={() => {
                 openId = g.id === openId ? undefined : g.id
                 $.ui.invalidate('ui.render')
-                if (openId !== undefined && boxState.id !== openId) void refreshBox($, boxState, openId)
+                if (openId !== undefined && boxState.id !== openId) {
+                    const picked = openId
+                    void refreshBox($, boxState, picked, () => openId === picked)
+                  }
               }}
             />
           ) : null}
@@ -858,7 +893,10 @@ export const register: Register = (on, options) => {
       )
     }
 
-    const opened = all.find(g => g.id === openId && g.state !== 'pre')
+    // 防雷遮住的那場不能畫明細：點開時還在打、後來打完了，明細會把最終比分洩漏出來
+      const opened = all.find(
+        g => g.id === openId && g.state !== 'pre' && !isMasked(g, spoilerFree(), revealed),
+      )
     return (
       <Box flexDirection="column">
         {below}

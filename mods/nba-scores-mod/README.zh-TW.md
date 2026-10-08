@@ -49,7 +49,7 @@ claude plugin uninstall nba-scores-mod@pusung-mods
 claude plugin marketplace remove pusung-mods
 ```
 
-重開 Claude Code 帶子就不見了。這個 mod 自己不會在你電腦上留下任何檔案。
+重開 Claude Code 帶子就不見了。除非你開過 `log`，否則這個 mod 不會寫任何檔案；開過的話，`~/.claude/nba-scores-mod.*.log` 要自己刪掉。
 
 ## 需求
 
@@ -114,7 +114,7 @@ ESPN 的「今天」是照美國日期算的，在其他時區很不好用。這
 3. **沒有裝成功。** 執行 `claude plugin list`，要看得到 `nba-scores-mod@pusung-mods` 而且狀態是 enabled。
 4. **你用的地方本來就不會畫**：`claude -p`、VS Code 擴充套件、手機版。
 
-**出現「資料未更新」。** 看到 `⚠ 資料未更新（N 分鐘前抓的）` 代表最近一次沒抓到資料，畫面上是舊的比分。這是刻意講出來的，不想把過期的比分當成即時的。它會自己重試，有比賽在打時最久隔一分鐘。如果一直沒恢復，多半是 ESPN 那邊改了東西：這個 mod 讀的是公開但沒有官方文件的端點，可能無預警變動。請開 issue 告訴我。
+**出現「資料未更新」。** 看到 `⚠ 資料未更新（N 分鐘前抓的）` 代表最近一次沒抓到資料，畫面上是舊的比分。這是刻意講出來的，不想把過期的比分當成即時的。它會自己重試，有比賽在打時最久隔一分鐘。如果是 ESPN 直接拒絕請求，它會退開，至少等五分鐘再試。如果一直沒恢復，多半是 ESPN 那邊改了東西：這個 mod 讀的是公開但沒有官方文件的端點，可能無預警變動。請開 issue 告訴我。
 
 ## 進階：設定檔
 
@@ -124,11 +124,11 @@ ESPN 的「今天」是照美國日期算的，在其他時區很不好用。這
 | :-- | :-- | :-- |
 | `log` | `false` | 每抓一次比分就寫一行到 `~/.claude/nba-scores-mod.<開啟時間>.log`。排查問題用，每開一次 Claude Code 就多一個檔案。 |
 | `date` | `""` | 固定看某一天（`YYYYMMDD`）。休賽期開發用。 |
-| `team`、`spoilerFree` | | 跟上面的設定一樣。兩邊都有設的話，以上面的設定為準。 |
+| `team`、`spoilerFree` | | 舊的設定方式。球隊以上面的設定為準；防雷只要任一邊打開就算開。 |
 
 ## 隱私與網路
 
-- 只連一個網站：`site.api.espn.com`。
+- 只連一個網站：`site.api.espn.com`。跟你平常上任何網站一樣，ESPN 看得到你的 IP 位址和這個 mod 發出的請求。
 - 只讀一個檔案：`~/.claude/nba-scores-mod.json`（有的話）。
 - 除非你打開 `log`，否則不寫任何檔案。你的設定和帶子有沒有收起來，是存在 Claude Code 自己的設定裡。
 - 不呼叫任何模型，不讀你的程式碼，也看不到你的對話。只註冊兩個 hook：`session.start` 和 `ui.render`。

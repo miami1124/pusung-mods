@@ -49,7 +49,7 @@ claude plugin uninstall nba-scores-mod@pusung-mods
 claude plugin marketplace remove pusung-mods
 ```
 
-Restart Claude Code and the band is gone. The mod leaves no files of its own behind.
+Restart Claude Code and the band is gone. The mod writes no files unless you turned on `log`; if you did, delete `~/.claude/nba-scores-mod.*.log` yourself.
 
 ## Requirements
 
@@ -114,7 +114,7 @@ Tip-off times are shown in your computer's time zone. On a day with no games, th
 3. **It is not installed.** Run `claude plugin list` and look for `nba-scores-mod@pusung-mods` with status enabled.
 4. **You are somewhere the band is not drawn**: `claude -p`, the VS Code extension, or mobile.
 
-**"Scores not updating".** A `⚠ Scores not updating (last fetched N min ago)` warning means the last fetch failed and you are looking at old numbers. The mod says so on purpose instead of passing stale scores off as live. It retries on its own, at most a minute apart while a game is live. If it never recovers, ESPN has probably changed something: the endpoints this mod reads are public but undocumented, and they can change without notice. Please open an issue.
+**"Scores not updating".** A `⚠ Scores not updating (last fetched N min ago)` warning means the last fetch failed and you are looking at old numbers. The mod says so on purpose instead of passing stale scores off as live. It retries on its own, at most a minute apart while a game is live. If ESPN refuses the request outright, it backs off and waits at least five minutes. If it never recovers, ESPN has probably changed something: the endpoints this mod reads are public but undocumented, and they can change without notice. Please open an issue.
 
 ## Advanced: config file
 
@@ -124,11 +124,11 @@ Not needed for normal use. `~/.claude/nba-scores-mod.json` accepts a few extra f
 | :-- | :-- | :-- |
 | `log` | `false` | Writes one line per fetch to `~/.claude/nba-scores-mod.<start time>.log`. For debugging; every session creates a new file. |
 | `date` | `""` | Pins the band to one day (`YYYYMMDD`). For development during the off-season. |
-| `team`, `spoilerFree` | | Same as the settings above. The settings win if both are set. |
+| `team`, `spoilerFree` | | Older way to set the same things. A team picked in the settings wins over the file; spoiler-free is on if either one turns it on. |
 
 ## Privacy and network
 
-- It connects to one host: `site.api.espn.com`.
+- It connects to one host: `site.api.espn.com`. As with any website you visit, ESPN can see your IP address and the requests the mod makes.
 - It reads one file, `~/.claude/nba-scores-mod.json`, if it exists.
 - It writes nothing to disk unless you turn on `log`. Your settings and whether the band is collapsed are stored in Claude Code's own settings.
 - It does not call any model, read your code, or see your conversation. It registers two hooks, `session.start` and `ui.render`.

@@ -560,3 +560,130 @@ test('terminal：沒有齒輪，設定走 /config', async ($, on) => {
   expect(await ui.find({ key: 'nba-scores-mod:collapse' })).toBeDefined()
   expect(await ui.find({ key: 'nba-scores-mod:settings' })).toBeUndefined()
 })
+
+// ---- 2026-10-08 外部審查找到的問題 ----
+
+/** 共用的假引擎回應；fetch 由各測試自己給 */
+const baseSetup = (on: any) => {
+  on('env.get', () => ({ value: '/tmp/nba-band-test-home' }))
+  on('fs.read', () => ({ deny: 'no config file' }))
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', () => ({ value: undefined }))
+  on('ui.render', () => ({ type: 'Box' }))
+  on('session.start', () => ({ cwd: '/tmp' }))
+  on('ui.log', () => ({ value: undefined }))
+}
+
+for (const surface of ['desktop', 'terminal'] as const) {
+  test(`${surface}：防雷開著時，點開的比賽打完後明細不能洩漏最終比分`, { options: { spoilerFree: 'On', language: 'English' } }, async ($, on) => {
+    // 第二次抓的時候，原本正在打的那場（id 2）打完了
+    let calls = 0
+    const ended = JSON.parse(JSON.stringify(SCOREBOARD))
+    ended.events[1].competitions[0].status.type = { state: 'post', shortDetail: 'Final' }
+    on('http.fetch', (_$: unknown, e: any) => ({
+      value: {
+        ok: true,
+        status: 200,
+        text: JSON.stringify(String(e.url).includes('summary') ? SUMMARY : calls++ === 0 ? SCOREBOARD : ended),
+      },
+    }))
+    const clock = mock.clock(on, { now: Date.parse('2026-10-06T23:30Z') })
+    baseSetup(on)
+    await $.session.start({ cwd: '/tmp', surface, isInteractive: true } as any)
+    const ui = await $.ui.mount({ plugin: 'nba-scores-mod', surface, component: 'AbovePrompt', props: PROPS })
+
+    // 比賽還在打：可以點開看每節比分
+    await ui.press({ key: 'nba-scores-mod:open:2' })
+    expect(await ui.find({ type: 'Text', text: 'Q1' })).toBeDefined()
+
+    // 30 秒後再抓，這場打完了 → 小卡遮住，明細也要跟著消失
+    await clock.advance(31_000)
+    expect(await ui.find({ key: 'nba-scores-mod:reveal:2' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Q1' })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: '98' })).toBeUndefined()
+
+    // 使用者自己點了看結果，明細才回來
+    await ui.press({ key: 'nba-scores-mod:reveal:2' })
+    expect(await ui.find({ type: 'Text', text: 'Q1' })).toBeDefined()
+  })
+}
+
+test('不會畫帶子的執行方式（非互動）不去抓 ESPN', async ($, on) => {
+  let fetches = 0
+  on('http.fetch', () => {
+    fetches += 1
+    return { value: { ok: true, status: 200, text: JSON.stringify(SCOREBOARD) } }
+  })
+  on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+  on('clock.every', () => ({ value: undefined }))
+  baseSetup(on)
+  await $.session.start({ cwd: '/tmp', surface: null, isInteractive: false } as any)
+  expect(fetches).toBe(0)
+})
+
+test('ESPN 明確拒絕（429）時至少隔 5 分鐘才再試，有比賽在打也一樣', async ($, on) => {
+  let scoreboardFetches = 0
+  on('http.fetch', () => {
+    scoreboardFetches += 1
+    return scoreboardFetches === 1
+      ? { value: { ok: true, status: 200, text: JSON.stringify(SCOREBOARD) } }
+      : { value: { ok: false, status: 429, text: '' } }
+  })
+  const clock = mock.clock(on, { now: Date.parse('2026-10-06T23:30Z') })
+  baseSetup(on)
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true } as any)
+  await $.ui.mount({ plugin: 'nba-scores-mod', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  // 第 1 次成功；有比賽在打，30 秒後第 2 次被拒絕
+  await clock.advance(46_000)
+  expect(scoreboardFetches).toBe(2)
+  // 接下來 4 分鐘都不能再去敲
+  await clock.advance(4 * 60_000)
+  expect(scoreboardFetches).toBe(2)
+  // 過了 5 分鐘才再試一次
+  await clock.advance(90_000)
+  expect(scoreboardFetches).toBe(3)
+})
+
+test('desktop：快速連點兩場，先點的那場慢回來時不能蓋掉後點那場的資料', { options: { language: 'English' } }, async ($, on) => {
+  const summaryFor = (name: string) => ({
+    boxscore: {
+      players: [
+        { team: { abbreviation: 'UTAH' }, statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete(name, 20)] }] },
+        { team: { abbreviation: 'DEN' }, statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete(name, 18)] }] },
+        { team: { abbreviation: 'NO' }, statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete(name, 16)] }] },
+        { team: { abbreviation: 'MIA' }, statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete(name, 14)] }] },
+      ],
+    },
+  })
+  // 第 1 場的球員數據故意卡住，等測試放行才回來
+  let releaseSlow: () => void = () => {}
+  const slow = new Promise<void>(resolve => {
+    releaseSlow = resolve
+  })
+  on('http.fetch', async (_$: unknown, e: any) => {
+    const url = String(e.url)
+    if (url.includes('event=1')) {
+      await slow
+      return { value: { ok: true, status: 200, text: JSON.stringify(summaryFor('Slow One')) } }
+    }
+    if (url.includes('event=2')) return { value: { ok: true, status: 200, text: JSON.stringify(summaryFor('Fast Two')) } }
+    return { value: { ok: true, status: 200, text: JSON.stringify(SCOREBOARD) } }
+  })
+  on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+  on('clock.every', () => ({ value: undefined }))
+  baseSetup(on)
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true } as any)
+  const ui = await $.ui.mount({ plugin: 'nba-scores-mod', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+
+  // 測試工具的 press 會等那次點擊引發的請求跑完，所以兩次點擊不能一個一個等：
+  // 先點第 1 場（請求卡住），不等它，接著點第 2 場，稍後才放行第 1 場的回應
+  const first = ui.press({ key: 'nba-scores-mod:open:1' })
+  const second = ui.press({ key: 'nba-scores-mod:open:2' })
+  setTimeout(releaseSlow, 150)
+  await Promise.all([first, second])
+  await new Promise(resolve => setTimeout(resolve, 50))
+  const tree = JSON.stringify(await ui.drawn())
+  expect(tree.includes('Fast Two')).toBe(true)
+  expect(tree.includes('Slow One')).toBe(false)
+  expect(tree.includes('Loading player stats')).toBe(false)
+})

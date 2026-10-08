@@ -1,3 +1,8 @@
+// Team totems: small fan-made icons, one per team, drawn for this project.
+// They are not official artwork. Each team's name and identity belong to that
+// team. The repository's MIT license covers the code; please do not use these
+// icons commercially.
+//
 // 各隊的小圖騰：照隊名畫的原創圖（熱火＝火焰），不是隊徽，也不是官方吉祥物。
 // 可以參考隊徽的題材和構圖（老鷹是側臉、公牛是正面牛頭），但形狀要自己畫，
 // 不能描隊徽、不能直接用隊徽的圖檔。
