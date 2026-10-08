@@ -608,18 +608,24 @@ for (const surface of ['desktop', 'terminal'] as const) {
   })
 }
 
-test('不會畫帶子的執行方式（非互動）不去抓 ESPN', async ($, on) => {
-  let fetches = 0
-  on('http.fetch', () => {
-    fetches += 1
-    return { value: { ok: true, status: 200, text: JSON.stringify(SCOREBOARD) } }
+// 桌面版 app 啟動時 isInteractive 不是 true（v0.8.0 用它來跳過抓取，結果桌面版卡在讀取中）。
+// 所以不管啟動時回報什麼，都要抓得到資料、畫得出帶子。
+for (const start of [
+  { surface: null, isInteractive: false },
+  { surface: 'desktop', isInteractive: false },
+  { surface: null, isInteractive: true },
+] as const) {
+  test(`啟動時回報 ${JSON.stringify(start)} 也要抓得到資料`, async ($, on) => {
+    on('http.fetch', () => ({ value: { ok: true, status: 200, text: JSON.stringify(SCOREBOARD) } }))
+    on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+    on('clock.every', () => ({ value: undefined }))
+    baseSetup(on)
+    await $.session.start({ cwd: '/tmp', ...start } as any)
+    const ui = await $.ui.mount({ plugin: 'nba-scores-mod', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+    // 有「收起」代表不是停在讀取中
+    expect(await ui.find({ key: 'nba-scores-mod:collapse' })).toBeDefined()
   })
-  on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
-  on('clock.every', () => ({ value: undefined }))
-  baseSetup(on)
-  await $.session.start({ cwd: '/tmp', surface: null, isInteractive: false } as any)
-  expect(fetches).toBe(0)
-})
+}
 
 test('ESPN 明確拒絕（429）時至少隔 5 分鐘才再試，有比賽在打也一樣', async ($, on) => {
   let scoreboardFetches = 0

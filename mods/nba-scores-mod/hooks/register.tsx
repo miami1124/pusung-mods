@@ -311,11 +311,9 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
 
-    // 不會畫帶子的情況（claude -p、VS Code、手機）就不要去抓 ESPN，白抓沒有意義
-    const input = e as { isInteractive?: boolean; surface?: string }
-    if (input.isInteractive === false) return r
-    // surface 只在確定是不支援的介面時才跳過；拿不到（null）時照常跑，免得誤傷桌面版
-    if (input.surface === 'vscode' || input.surface === 'mobile') return r
+    // 這裡不能用 isInteractive 或 surface 來判斷要不要抓：桌面版 app 啟動時回報的值
+    // 跟終端機不一樣（v0.8.0 加了這個判斷，結果桌面版整條帶卡在「讀取中」）。
+    // 寧可在不會畫帶子的執行方式多抓幾次，也不能讓會畫的地方抓不到。
 
     collapsed = (await $.store.get(COLLAPSED_KEY)) === true
     settingsOpen = (await $.store.get(SETTINGS_OPEN_KEY)) === true
