@@ -44,6 +44,10 @@ export type Strings = {
   settingTeam: string
   settingLanguage: string
   settingSpoilerFree: string
+  settingsNotSaved: string
+  /** 設定按鈕上的字，例如「語言：Auto」 */
+  settingValue: (label: string, value: string) => string
+  noTeam: string
   maskedAlt: string
   pts: string
   reb: string
@@ -71,6 +75,9 @@ export const STRINGS: Record<Lang, Strings> = {
     settingTeam: 'Team',
     settingLanguage: 'Language',
     settingSpoilerFree: 'Spoiler-free',
+    settingsNotSaved: "Couldn't save. This resets when you restart.",
+    settingValue: (label, value) => `${label}: ${value}`,
+    noTeam: 'None',
     maskedAlt: 'Score hidden',
     pts: 'PTS',
     reb: 'REB',
@@ -96,6 +103,9 @@ export const STRINGS: Record<Lang, Strings> = {
     settingTeam: '球隊',
     settingLanguage: '語言',
     settingSpoilerFree: '防雷',
+    settingsNotSaved: '存不起來，重開後會還原',
+    settingValue: (label, value) => `${label}：${value}`,
+    noTeam: '不選',
     maskedAlt: '比分已遮住',
     pts: '得分',
     reb: '籃板',

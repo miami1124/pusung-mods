@@ -129,6 +129,45 @@ const COLLAPSED_KEY = 'collapsed'
 /** 桌面版的設定那一排有沒有打開。改設定會讓 mod 重新載入，存起來才不會每改一項就自己關掉 */
 const SETTINGS_OPEN_KEY = 'settingsOpen'
 const SPOILER_OPTIONS = ['Off', 'On']
+/**
+ * 帶子上改的設定寫不進設定選單時，改存在 $.store 的這個 key。
+ * 有些執行方式下引擎不給 mod 的設定欄位（$.config.set 會直接失敗），不留這條路的話
+ * 下拉選了就完全沒反應。
+ */
+const OVERRIDES_KEY = 'overrides'
+const FIELDS = ['team', 'language', 'spoilerFree'] as const
+type Field = (typeof FIELDS)[number]
+
+/** 帶子上改了、但寫不進設定選單的那幾項（有值就蓋過設定選單），以及連這份都存不進去的旗號 */
+type Held = { overrides: Partial<Record<Field, string>>; saveProblem: boolean }
+
+/**
+ * 帶子上的下拉選了一項。先照正常路寫進設定選單（寫得進去，引擎會帶著新設定重新載入）；
+ * 寫不進去就自己記在 $.store，當場套用。
+ */
+async function saveSetting($: EngineInterface, held: Held, field: Field, value: string, apply: () => void) {
+  let saved = false
+  try {
+    const res = await $.config.set({ key: `nba-scores-mod.${field}`, value })
+    saved = res.deny === undefined
+    if (!saved) $.ui.log(`nba-scores-mod: could not save ${field} ${String(res.deny)}`)
+  } catch (err) {
+    $.ui.log(`nba-scores-mod: could not save ${field} ${String(err)}`)
+  }
+  // 寫得進設定選單就以它為準，舊的那份不能留著蓋過它
+  if (saved && !(field in held.overrides)) return
+  if (saved) delete held.overrides[field]
+  else held.overrides[field] = value
+  try {
+    await $.store.set(OVERRIDES_KEY, held.overrides)
+    held.saveProblem = false
+  } catch {
+    // 這次看得到，重開就還原，要讓畫面講出來
+    held.saveProblem = !saved
+  }
+  apply()
+  $.ui.invalidate('ui.render')
+}
 
 /** 點開那一場的球員數據。id 是「這份資料屬於哪一場」，跟目前點開的不同就不畫 */
 type BoxState = { id?: string; teams?: TeamBox[]; error?: string; at: number; seq: number }
@@ -285,12 +324,46 @@ const renderDetail = (
 }
 
 export const register: Register = (on, options) => {
+  const held: Held = { overrides: {}, saveProblem: false }
+  const option = (field: Field): unknown => held.overrides[field] ?? options[field]
   // 球隊可以從兩個地方來：設定選單（優先）和 ~/.claude/nba-scores-mod.json（舊做法，繼續有效）
-  const menuTeam = teamFromOption(options.team)
-  const t = STRINGS[langFromOption(options.language)]
+  let menuTeam = teamFromOption(option('team'))
+  let t = STRINGS[langFromOption(option('language'))]
   // 防雷模式：設定選單選 On 就開；選 Off 或沒設時看設定檔（舊做法，繼續有效）
-  const menuSpoilerFree = options.spoilerFree === 'On'
+  let menuSpoilerFree = option('spoilerFree') === 'On'
   const spoilerFree = () => menuSpoilerFree || config.spoilerFree
+  /** 設定檔讀到的內容，還沒跟設定選單的球隊合併 */
+  let fileConfig: Config = { ...DEFAULTS }
+  const applyOptions = () => {
+    menuTeam = teamFromOption(option('team'))
+    t = STRINGS[langFromOption(option('language'))]
+    menuSpoilerFree = option('spoilerFree') === 'On'
+    config = menuTeam === '' ? fileConfig : { ...fileConfig, team: menuTeam }
+  }
+  // 使用者自己在 /config 改了某一項，就以他改的為準：帶子上留的那份要丟掉，不然會一直蓋過它
+  /** 丟掉帶子上留的那一項；真的有丟才回 true */
+  const dropOverride = (field: Field): boolean => {
+    if (!(field in held.overrides)) return false
+    delete held.overrides[field]
+    applyOptions()
+    return true
+  }
+  // 這幾個 hook 只是旁聽，自己出錯時不能擋住使用者改設定（.catch 會照原樣放行）
+  on('config.set', { key: 'nba-scores-mod.team' }, async ($, e, next) => {
+    const r = await next(e)
+    if (r.deny === undefined && dropOverride('team')) await $.store.set(OVERRIDES_KEY, held.overrides)
+    return r
+  }).catch(($, e, next) => next(e))
+  on('config.set', { key: 'nba-scores-mod.language' }, async ($, e, next) => {
+    const r = await next(e)
+    if (r.deny === undefined && dropOverride('language')) await $.store.set(OVERRIDES_KEY, held.overrides)
+    return r
+  }).catch(($, e, next) => next(e))
+  on('config.set', { key: 'nba-scores-mod.spoilerFree' }, async ($, e, next) => {
+    const r = await next(e)
+    if (r.deny === undefined && dropOverride('spoilerFree')) await $.store.set(OVERRIDES_KEY, held.overrides)
+    return r
+  }).catch(($, e, next) => next(e))
   // 這些狀態只活在記憶體裡：一個新 session 從零開始
   let slate: Slate | undefined
   let lastError: string | undefined
@@ -313,6 +386,8 @@ export const register: Register = (on, options) => {
   let collapsed = false
   /** 桌面版：設定那一排（球隊／語言／防雷）有沒有打開 */
   let settingsOpen = false
+  /** 桌面版：設定那一排底下的 30 隊按鈕有沒有展開。只放記憶體，選完就收 */
+  let teamOpen = false
   /** 那一排從第幾場開始畫（按 ‹ › 左右翻） */
   let offset = 0
   /** 連續抓失敗幾次了，決定下次隔多久重試；成功就歸零 */
@@ -339,6 +414,14 @@ export const register: Register = (on, options) => {
 
     collapsed = (await $.store.get(COLLAPSED_KEY)) === true
     settingsOpen = (await $.store.get(SETTINGS_OPEN_KEY)) === true
+    const kept = await $.store.get(OVERRIDES_KEY)
+    if (kept !== null && typeof kept === 'object') {
+      for (const field of FIELDS) {
+        const v = (kept as Record<string, unknown>)[field]
+        if (typeof v === 'string') held.overrides[field] = v
+      }
+      applyOptions()
+    }
 
     const home = (await $.env.get('HOME')) ?? ''
     const configPath = home ? `${home}/${CONFIG_REL}` : ''
@@ -353,7 +436,8 @@ export const register: Register = (on, options) => {
       }
       try {
         const parsed = parseConfig(await $.fs.read(configPath))
-        config = menuTeam === '' ? parsed.config : { ...parsed.config, team: menuTeam }
+        fileConfig = parsed.config
+        config = menuTeam === '' ? fileConfig : { ...fileConfig, team: menuTeam }
         configProblems = parsed.problems
         configMisses = 0
       } catch {
@@ -492,7 +576,7 @@ export const register: Register = (on, options) => {
 
     // ---- 桌面版：橫排小卡 ----
     if (e.surface === 'desktop') {
-      const { Box, Button, Select, Svg, Text } = $.ui.resolve(e)
+      const { Box, Button, Svg, Text } = $.ui.resolve(e)
       const nowMs = await $.clock.now()
       // 別的 mod（例如用量帶）畫的東西一律放在自己上面。兩個 mod 誰包誰是看安裝
       // 順序，不這樣固定的話，裝的順序不同上下就會顛倒。
@@ -647,16 +731,26 @@ export const register: Register = (on, options) => {
         g => g.id === openId && g.state !== 'pre' && !isMasked(g, spoilerFree(), revealed),
       )
 
-      // 設定那一排的一個下拉。選了就寫進設定，mod 會帶著新設定重新載入
-      const setting = (field: string, label: string, choices: string[], value: string) => (
-        <Select
+      // 設定那一排全部用按鈕，不用下拉：桌面版不接 Select 的選取（2026-10-13 實測，
+      // 紀錄寫 ui_select not handled），按鈕才確定會動。
+      // 語言、防雷選項少，點一下換下一個；選了就寫進設定
+      const cycle = (field: Field, label: string, choices: string[], value: string) => (
+        <Button
           key={`nba-scores-mod:setting:${field}`}
-          label={label}
-          options={choices.map(v => ({ value: v }))}
-          value={value}
-          onSelect={async picked => {
-            const res = await $.config.set({ key: `nba-scores-mod.${field}`, value: picked })
-            if ('deny' in res) $.ui.log(`nba-scores-mod: could not save ${field} ${String(res.deny)}`)
+          label={t.settingValue(label, value)}
+          onPress={() => saveSetting($, held, field, choices[(choices.indexOf(value) + 1) % choices.length], applyOptions)}
+        />
+      )
+      // 球隊有 30 個，一顆一顆列出來，點哪隊就選哪隊
+      const teamButton = (value: string, label: string) => (
+        <Button
+          key={`nba-scores-mod:team:${value === NO_TEAM ? 'none' : label}`}
+          // 目前選的那隊用打勾標出來。不用 variant：舊一點的 Claude Code 不認得，整棵樹會被拒收
+          label={value === currentTeamOption ? `✓ ${label}` : label}
+          onPress={() => {
+            teamOpen = false
+            $.ui.invalidate('ui.render')
+            return saveSetting($, held, 'team', value, applyOptions)
           }}
         />
       )
@@ -722,16 +816,17 @@ export const register: Register = (on, options) => {
                   }}
                 />
               ) : null}
-              {/* 還沒選球隊才出現。選了會寫進設定，mod 自動重新載入，這個選單就消失 */}
-              {config.team === '' ? (
-                <Select
+              {/* 還沒選球隊才出現：點了直接把 30 隊攤開。選了隊這顆就消失 */}
+              {config.team === '' && !teamOpen ? (
+                <Button
                   key="nba-scores-mod:pick-team"
+                  plain
                   label={t.pickTeam}
-                  options={TEAM_OPTIONS.map(value => ({ value }))}
-                  value={NO_TEAM}
-                  onSelect={async value => {
-                    const res = await $.config.set({ key: 'nba-scores-mod.team', value })
-                    if ('deny' in res) $.ui.log(`nba-scores-mod: could not save team ${String(res.deny)}`)
+                  onPress={() => {
+                    settingsOpen = true
+                    teamOpen = true
+                    void $.store.set(SETTINGS_OPEN_KEY, settingsOpen)
+                    $.ui.invalidate('ui.render')
                   }}
                 />
               ) : null}
@@ -743,6 +838,7 @@ export const register: Register = (on, options) => {
                 label={t.settings}
                 onPress={() => {
                   settingsOpen = !settingsOpen
+                  teamOpen = false
                   void $.store.set(SETTINGS_OPEN_KEY, settingsOpen)
                   $.ui.invalidate('ui.render')
                 }}
@@ -761,14 +857,22 @@ export const register: Register = (on, options) => {
           </Box>
           {settingsOpen ? (
             <Box flexDirection="row" alignItems="center" gap={2} marginTop={1}>
-              {setting('team', t.settingTeam, TEAM_OPTIONS, currentTeamOption)}
-              {setting('language', t.settingLanguage, LANG_OPTIONS, currentOption(options.language, LANG_OPTIONS))}
-              {setting(
-                'spoilerFree',
-                t.settingSpoilerFree,
-                SPOILER_OPTIONS,
-                currentOption(options.spoilerFree, SPOILER_OPTIONS),
-              )}
+              <Button
+                key="nba-scores-mod:setting:team"
+                label={`${t.settingValue(t.settingTeam, config.team === '' ? t.noTeam : config.team)} ${teamOpen ? '▴' : '▾'}`}
+                onPress={() => {
+                  teamOpen = !teamOpen
+                  $.ui.invalidate('ui.render')
+                }}
+              />
+              {cycle('language', t.settingLanguage, LANG_OPTIONS, currentOption(option('language'), LANG_OPTIONS))}
+              {cycle('spoilerFree', t.settingSpoilerFree, SPOILER_OPTIONS, currentOption(option('spoilerFree'), SPOILER_OPTIONS))}
+              {held.saveProblem ? <Text color="#d97706">{t.settingsNotSaved}</Text> : null}
+            </Box>
+          ) : null}
+          {settingsOpen && teamOpen ? (
+            <Box flexDirection="row" flexWrap="wrap" gap={1} marginTop={1}>
+              {TEAM_OPTIONS.map(o => teamButton(o, o === NO_TEAM ? t.noTeam : teamFromOption(o)))}
             </Box>
           ) : null}
           {opened ? renderDetail({ Box, Text }, opened, boxState, { wide: true, gapTop: 1, t }) : null}

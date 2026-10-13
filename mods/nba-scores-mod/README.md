@@ -67,13 +67,13 @@ There are three settings. The desktop app and the terminal keep their own copies
 | **Language** | `Auto` | `Auto` shows Traditional Chinese when your computer is on Taiwan time and English everywhere else. Pick `English` or `繁體中文` to force one. |
 | **Spoiler-free** | `Off` | `On` hides the score of finished games. Click **Reveal** on a game, or **Reveal all**. Live games are never hidden. Revealed games are hidden again the next time you open Claude Code. |
 
-**In the desktop app**, click **⚙ Settings** on the band. A row with the three settings opens; click it again to close the row.
+**In the desktop app**, click **⚙ Settings** on the band. A row of three buttons opens; click it again to close the row. **Team** opens the 30 teams, and you click the one you want. **Language** and **Spoiler-free** switch to the next option each time you click them.
 
 ![The settings row on the band](../../docs/settings-en.png)
 
-Until you choose a team, a **Pick your team** dropdown also sits on the band itself.
+Until you choose a team, a **Pick your team** button also sits on the band itself. It opens the same 30 teams.
 
-![The Pick your team dropdown on the band](../../docs/pick-team-en.png)
+![Pick your team on the band](../../docs/pick-team-en.png)
 
 **In the terminal**, run `/config` and scroll to the nba-scores-mod rows (`Your team`, `Language`, `Spoiler-free`).
 

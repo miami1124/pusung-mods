@@ -196,7 +196,10 @@ test('desktop：還沒選球隊時沒有圖騰，並出現選隊選單；選了�
   expect(await ui.find({ type: 'Text', text: 'NBA' })).toMatchObject({ props: { color: '#FCEBEB' } })
   expect(await ui.find({ key: 'nba-scores-mod:pick-team' })).toMatchObject({ props: { label: 'Pick your team' } })
 
-  await ui.select({ key: 'nba-scores-mod:pick-team', value: 'MIA Heat' })
+  // 點了直接攤開 30 隊，再點一隊
+  await ui.press({ key: 'nba-scores-mod:pick-team' })
+  expect(await ui.drawn()).toMatchObject({ type: 'Box' })
+  await ui.press({ key: 'nba-scores-mod:team:MIA' })
   expect(saved).toEqual([['nba-scores-mod.team', 'MIA Heat']])
 })
 
@@ -503,7 +506,7 @@ test('防雷模式沒開時，打完的比分直接顯示', { options: { languag
 
 // ---- 桌面版的設定入口（齒輪） ----
 
-test('desktop：齒輪點開才出現球隊／語言／防雷三個下拉，選了就寫進設定', { options: { team: 'MIA Heat', language: 'English' } }, async ($, on) => {
+test('desktop：齒輪點開才出現球隊／語言／防雷三顆按鈕，點了就寫進設定', { options: { team: 'MIA Heat', language: 'English' } }, async ($, on) => {
   on('http.fetch', () => ({ value: { ok: true, status: 200, text: JSON.stringify(SCOREBOARD) } }))
   on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
   on('clock.every', () => ({ value: undefined }))
@@ -533,15 +536,25 @@ test('desktop：齒輪點開才出現球隊／語言／防雷三個下拉，選�
   await ui.press({ key: 'nba-scores-mod:settings' })
   expect(await ui.drawn()).toMatchObject({ type: 'Box' })
   // 下拉顯示目前的值
-  expect(await ui.find({ key: 'nba-scores-mod:setting:team' })).toMatchObject({ props: { value: 'MIA Heat', label: 'Team' } })
-  expect(await ui.find({ key: 'nba-scores-mod:setting:language' })).toMatchObject({ props: { value: 'English' } })
-  expect(await ui.find({ key: 'nba-scores-mod:setting:spoilerFree' })).toMatchObject({ props: { value: 'Off' } })
+  expect(await ui.find({ key: 'nba-scores-mod:setting:team' })).toMatchObject({ props: { label: 'Team: MIA ▾' } })
+  expect(await ui.find({ key: 'nba-scores-mod:setting:language' })).toMatchObject({ props: { label: 'Language: English' } })
+  expect(await ui.find({ key: 'nba-scores-mod:setting:spoilerFree' })).toMatchObject({ props: { label: 'Spoiler-free: Off' } })
+  // 整棵樹裡不能有下拉：桌面版不接它的選取（2026-10-13）
+  expect(await ui.find({ type: 'Select' })).toBeUndefined()
+  // 30 隊要點了「球隊」才攤開
+  expect(await ui.find({ key: 'nba-scores-mod:team:LAL' })).toBeUndefined()
   // 開關狀態有存起來，改設定重新載入後才不會自己關掉
   expect(stored).toContainEqual(['settingsOpen', true])
 
-  await ui.select({ key: 'nba-scores-mod:setting:spoilerFree', value: 'On' })
-  await ui.select({ key: 'nba-scores-mod:setting:language', value: '繁體中文' })
-  await ui.select({ key: 'nba-scores-mod:setting:team', value: 'LAL Lakers' })
+  await ui.press({ key: 'nba-scores-mod:setting:spoilerFree' })
+  await ui.press({ key: 'nba-scores-mod:setting:language' })
+  await ui.press({ key: 'nba-scores-mod:setting:team' })
+  expect(await ui.drawn()).toMatchObject({ type: 'Box' })
+  expect(await ui.find({ key: 'nba-scores-mod:team:MIA' })).toMatchObject({ props: { label: '✓ MIA' } })
+  expect(await ui.find({ key: 'nba-scores-mod:team:none' })).toMatchObject({ props: { label: 'None' } })
+  await ui.press({ key: 'nba-scores-mod:team:LAL' })
+  // 選完自己收起來
+  expect(await ui.find({ key: 'nba-scores-mod:team:LAL' })).toBeUndefined()
   expect(saved).toEqual([
     ['nba-scores-mod.spoilerFree', 'On'],
     ['nba-scores-mod.language', '繁體中文'],
@@ -551,6 +564,70 @@ test('desktop：齒輪點開才出現球隊／語言／防雷三個下拉，選�
   // 再點一次收回去
   await ui.press({ key: 'nba-scores-mod:settings' })
   expect(await ui.find({ key: 'nba-scores-mod:setting:team' })).toBeUndefined()
+})
+
+// 2026-10-13：安裝版在桌面版選了球隊完全沒反應。引擎那邊沒有 mod 的設定欄位，
+// $.config.set 直接失敗，而原本的程式沒有第二條路。
+for (const failure of ['deny', 'throw'] as const) {
+  test(`desktop：設定選單寫不進去（${failure}）時，改存在 store 並當場套用`, { options: { team: 'MIA Heat', language: 'English' } }, async ($, on) => {
+    on('http.fetch', () => ({ value: { ok: true, status: 200, text: JSON.stringify(SCOREBOARD) } }))
+    on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+    on('clock.every', () => ({ value: undefined }))
+    on('env.get', () => ({ value: '/tmp/nba-band-test-home' }))
+    on('fs.read', () => ({ deny: 'no config file' }))
+    on('store.get', () => ({ value: undefined }))
+    const stored: unknown[] = []
+    on('store.set', (_$: unknown, e: any) => {
+      stored.push([e.key, { ...e.value }])
+      return { value: undefined }
+    })
+    on('ui.render', () => ({ type: 'Box' }))
+    on('session.start', () => ({ cwd: '/tmp' }))
+    on('ui.log', () => ({ value: undefined }))
+    on('config.set', () => {
+      if (failure === 'throw') throw new Error('no /config row with key nba-scores-mod.team')
+      return { deny: 'no such row' }
+    })
+    await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true } as any)
+    const ui = await $.ui.mount({ plugin: 'nba-scores-mod', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+    await ui.press({ key: 'nba-scores-mod:settings' })
+
+    await ui.press({ key: 'nba-scores-mod:setting:team' })
+    await ui.press({ key: 'nba-scores-mod:team:LAL' })
+    expect(stored).toContainEqual(['overrides', { team: 'LAL Lakers' }])
+    expect(await ui.find({ key: 'nba-scores-mod:setting:team' })).toMatchObject({ props: { label: 'Team: LAL ▾' } })
+
+    // English 的下一個是繁體中文
+    await ui.press({ key: 'nba-scores-mod:setting:language' })
+    expect(await ui.find({ key: 'nba-scores-mod:settings' })).toMatchObject({ props: { label: '⚙ 設定' } })
+
+    await ui.press({ key: 'nba-scores-mod:setting:spoilerFree' })
+    expect(await ui.find({ key: 'nba-scores-mod:setting:spoilerFree' })).toMatchObject({ props: { label: '防雷：On' } })
+    expect(stored).toContainEqual(['overrides', { team: 'LAL Lakers', language: '繁體中文', spoilerFree: 'On' }])
+
+    // 選「不選」要真的清掉球隊，不能退回設定選單裡那個改不動的舊值
+    await ui.press({ key: 'nba-scores-mod:setting:team' })
+    await ui.press({ key: 'nba-scores-mod:team:none' })
+    expect(await ui.find({ key: 'nba-scores-mod:setting:team' })).toMatchObject({ props: { label: '球隊：不選 ▾' } })
+  })
+}
+
+test('desktop：存在 store 的設定重開後還在，而且蓋過設定選單的舊值', { options: { team: 'MIA Heat', language: 'English' } }, async ($, on) => {
+  on('http.fetch', () => ({ value: { ok: true, status: 200, text: JSON.stringify(SCOREBOARD) } }))
+  on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+  on('clock.every', () => ({ value: undefined }))
+  on('env.get', () => ({ value: '/tmp/nba-band-test-home' }))
+  on('fs.read', () => ({ deny: 'no config file' }))
+  on('store.get', (_$: unknown, e: any) => ({
+    value: e.key === 'overrides' ? { team: 'LAL Lakers', language: '繁體中文' } : e.key === 'settingsOpen' ? true : undefined,
+  }))
+  on('store.set', () => ({ value: undefined }))
+  on('ui.render', () => ({ type: 'Box' }))
+  on('session.start', () => ({ cwd: '/tmp' }))
+  on('ui.log', () => ({ value: undefined }))
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true } as any)
+  const ui = await $.ui.mount({ plugin: 'nba-scores-mod', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  expect(await ui.find({ key: 'nba-scores-mod:setting:team' })).toMatchObject({ props: { label: '球隊：LAL ▾' } })
 })
 
 test('terminal：沒有齒輪，設定走 /config', async ($, on) => {
