@@ -416,19 +416,35 @@ for (const [label, options, collapse] of [
   })
 }
 
-// ---- 單場明細的球員名字 ----
+// ---- 單場明細：各項領袖 ----
 
-const athlete = (name: string, pts: number) => ({ athlete: { shortName: name }, stats: [String(pts), '3', '2'] })
+// 欄位照 ESPN 真實的順序（2026-10-14 實際抓過一場確認）
+const BOX_LABELS = ['MIN', 'PTS', 'FG', '3PT', 'FT', 'REB', 'AST', 'TO', 'STL', 'BLK', 'OREB', 'DREB', 'PF', '+/-']
+const line = (name: string, s: { pts: number; reb?: number; ast?: number; to?: number; stl?: number; blk?: number }) => ({
+  athlete: { shortName: name },
+  stats: ['30', String(s.pts), '5-10', '1-3', '2-2', String(s.reb ?? 0), String(s.ast ?? 0), String(s.to ?? 0), String(s.stl ?? 0), String(s.blk ?? 0), '1', '2', '2', '+3'],
+})
+// 舊測試用：只給得分，其他項目一律 3 籃板、2 助攻
+const athlete = (name: string, pts: number) => line(name, { pts, reb: 3, ast: 2 })
 const SUMMARY = {
   boxscore: {
     players: [
       {
         team: { abbreviation: 'UTAH' },
-        statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete('S. Gilgeous-Alexander', 30), athlete('J. Jaquez Jr.', 12)] }],
+        statistics: [
+          {
+            labels: BOX_LABELS,
+            athletes: [
+              line('S. Gilgeous-Alexander', { pts: 30, reb: 4, ast: 2, stl: 1 }),
+              line('J. Jaquez Jr.', { pts: 12, reb: 9, ast: 6, to: 3 }),
+              { athlete: { shortName: 'K. Anderson' }, stats: [] },
+            ],
+          },
+        ],
       },
       {
         team: { abbreviation: 'DEN' },
-        statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete('N. Jokic', 28)] }],
+        statistics: [{ labels: BOX_LABELS, athletes: [line('N. Jokic', { pts: 28, reb: 12, ast: 10, blk: 2 })] }],
       },
     ],
   },
@@ -453,13 +469,48 @@ test('desktop：球員名字太長會截短，名字和數字的行數才對得�
   // 等球員數據抓回來重畫
   await new Promise(resolve => setTimeout(resolve, 50))
   const tree = JSON.stringify(await ui.drawn())
-  expect(tree.includes('PTS')).toBe(true)
-  expect(tree.includes('J. Jaquez Jr.')).toBe(true)
+  for (const cat of ['PTS', 'REB', 'AST', 'STL', 'BLK', 'TO']) expect(tree.includes(cat)).toBe(true)
   expect(tree.includes('S. Gilgeous-Alexander')).toBe(false)
   expect(tree.includes('S. Gilgeous-Ale…')).toBe(true)
   // 名字那一欄不准縮，縮了就會折行
   expect(await ui.find({ key: 'names:UTA' })).toMatchObject({ props: { flexShrink: 0 } })
 })
+
+for (const surface of ['desktop', 'terminal'] as const) {
+  test(`${surface}：明細是兩隊面對面的各項領袖`, { options: { language: 'English' } }, async ($, on) => {
+    on('http.fetch', (_$: unknown, e: any) => ({
+      value: { ok: true, status: 200, text: JSON.stringify(String(e.url).includes('summary') ? SUMMARY : SCOREBOARD) },
+    }))
+    on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+    on('clock.every', () => ({ value: undefined }))
+    on('env.get', () => ({ value: '/tmp/nba-band-test-home' }))
+    on('fs.read', () => ({ deny: 'no config file' }))
+    on('store.get', () => ({ value: undefined }))
+    on('store.set', () => ({ value: undefined }))
+    on('ui.render', () => ({ type: 'Box' }))
+    on('session.start', () => ({ cwd: '/tmp' }))
+    on('ui.log', () => ({ value: undefined }))
+    await $.session.start({ cwd: '/tmp', surface, isInteractive: true } as any)
+    const ui = await $.ui.mount({ plugin: 'nba-scores-mod', surface, component: 'AbovePrompt', props: PROPS })
+    await ui.press({ key: 'nba-scores-mod:open:1' })
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(await ui.drawn()).toMatchObject({ type: 'Box' })
+    const col = async (key: string) => JSON.stringify(await ui.find({ key }))
+    // 客隊（UTA）：得分是 SGA，籃板、助攻、失誤是 Jaquez；抄截 SGA；火鍋沒人 → 空白名字、數字「–」
+    const awayNames = await col('names:UTA')
+    const awayValues = await col('values:UTA')
+    for (const s of ['S. Gilgeous-Ale…', 'J. Jaquez Jr.']) expect(awayNames.includes(s)).toBe(true)
+    for (const s of ['"30"', '"9"', '"6"', '"1"', '"–"', '"3"']) expect(awayValues.includes(s)).toBe(true)
+    // 沒上場的球員不能出現
+    expect(awayNames.includes('K. Anderson')).toBe(false)
+    // 主隊（DEN）：全部都是 Jokic，數字照順序
+    expect((await col('names:DEN')).includes('N. Jokic')).toBe(true)
+    for (const s of ['"28"', '"12"', '"10"', '"2"']) expect((await col('values:DEN')).includes(s)).toBe(true)
+    // 中間那欄是六個項目
+    const cats = await col('cats')
+    for (const s of ['PTS', 'REB', 'AST', 'STL', 'BLK', 'TO']) expect(cats.includes(s)).toBe(true)
+  })
+}
 
 // ---- 防雷模式 ----
 
@@ -802,10 +853,10 @@ test('desktop：快速連點兩場，先點的那場慢回來時不能蓋掉後�
   const summaryFor = (name: string) => ({
     boxscore: {
       players: [
-        { team: { abbreviation: 'UTAH' }, statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete(name, 20)] }] },
-        { team: { abbreviation: 'DEN' }, statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete(name, 18)] }] },
-        { team: { abbreviation: 'NO' }, statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete(name, 16)] }] },
-        { team: { abbreviation: 'MIA' }, statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete(name, 14)] }] },
+        { team: { abbreviation: 'UTAH' }, statistics: [{ labels: BOX_LABELS, athletes: [athlete(name, 20)] }] },
+        { team: { abbreviation: 'DEN' }, statistics: [{ labels: BOX_LABELS, athletes: [athlete(name, 18)] }] },
+        { team: { abbreviation: 'NO' }, statistics: [{ labels: BOX_LABELS, athletes: [athlete(name, 16)] }] },
+        { team: { abbreviation: 'MIA' }, statistics: [{ labels: BOX_LABELS, athletes: [athlete(name, 14)] }] },
       ],
     },
   })
@@ -900,7 +951,7 @@ test('desktop：點 A、點 B、再點回 A，第一次 A 慢回來的舊資料�
     boxscore: {
       players: ['UTAH', 'DEN', 'NO', 'MIA'].map(abbr => ({
         team: { abbreviation: abbr },
-        statistics: [{ labels: ['PTS', 'REB', 'AST'], athletes: [athlete(name, 20)] }],
+        statistics: [{ labels: BOX_LABELS, athletes: [athlete(name, 20)] }],
       })),
     },
   })

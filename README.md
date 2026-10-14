@@ -16,7 +16,7 @@ Live NBA scores above the prompt, in the terminal and the desktop app.
 
 - Live scores every 30 seconds, live games first
 - Pick your team: the badge takes its colors, and in the desktop app it also gets its own totem
-- Open any game for the score by quarter and each team's five top scorers
+- Open any game for the score by quarter and each team's leaders in points, rebounds, assists, steals, blocks and turnovers
 - Optional spoiler-free mode
 - English and Traditional Chinese
 - No API key, no account, zero model tokens

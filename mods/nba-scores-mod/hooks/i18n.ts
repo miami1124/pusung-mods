@@ -50,6 +50,9 @@ export type Strings = {
   noTeam: string
   maskedAlt: string
   pts: string
+  stl: string
+  blk: string
+  to: string
   reb: string
   ast: string
   total: string
@@ -80,6 +83,9 @@ export const STRINGS: Record<Lang, Strings> = {
     noTeam: 'None',
     maskedAlt: 'Score hidden',
     pts: 'PTS',
+    stl: 'STL',
+    blk: 'BLK',
+    to: 'TO',
     reb: 'REB',
     ast: 'AST',
     total: 'Total',
@@ -108,6 +114,9 @@ export const STRINGS: Record<Lang, Strings> = {
     noTeam: '不選',
     maskedAlt: '比分已遮住',
     pts: '得分',
+    stl: '抄截',
+    blk: '火鍋',
+    to: '失誤',
     reb: '籃板',
     ast: '助攻',
     total: '總分',

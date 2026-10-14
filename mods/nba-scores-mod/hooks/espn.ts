@@ -4,8 +4,7 @@
 // 端點免金鑰、免帳號，但不是官方文件化的 API，所以欄位有可能無預警變動。
 // 因此解析失敗一律丟錯（讓上層在畫面上明示），絕不回傳半套資料當成事實。
 
-export const SCOREBOARD_URL =
-  'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard'
+export const SCOREBOARD_URL = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard'
 
 // ESPN 擋掉大部分的 User-Agent，而且只看「第一個詞」。2026-09-18 實測：
 //   curl / python-requests / Go-http-client / okhttp  → 200
@@ -75,9 +74,7 @@ const parseSide = (raw: any): Side => {
     color: String(team.color ?? '888888'),
     altColor: String(team.alternateColor ?? team.color ?? '888888'),
     // 這是比分板順便給的，不用另外抓單場資料
-    periods: Array.isArray(raw?.linescores)
-      ? raw.linescores.map((l: any) => Number(l?.value ?? 0))
-      : [],
+    periods: Array.isArray(raw?.linescores) ? raw.linescores.map((l: any) => Number(l?.value ?? 0)) : [],
   }
 }
 
@@ -204,15 +201,19 @@ export const teamColor = (side: Side): string => {
 export const summaryUrl = (gameId: string): string =>
   `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${gameId}`
 
-export type PlayerLine = { name: string; pts: number; reb: number; ast: number }
-export type TeamBox = { abbr: string; players: PlayerLine[] }
-
-/** 每隊列出得分前幾名 */
-const TOP_PLAYERS = 5
+/** 明細裡比的六項，順序就是畫面上由上到下的順序 */
+export const LEADER_CATS = ['pts', 'reb', 'ast', 'stl', 'blk', 'to'] as const
+export type LeaderCat = (typeof LEADER_CATS)[number]
+/** ESPN boxscore 的欄位名稱 */
+const LEADER_LABEL: Record<LeaderCat, string> = { pts: 'PTS', reb: 'REB', ast: 'AST', stl: 'STL', blk: 'BLK', to: 'TO' }
+/** 這一項全隊都是 0、或 ESPN 沒給這一欄時是 null，畫成「–」 */
+export type Leader = { name: string; value: number } | null
+export type TeamBox = { abbr: string; leaders: Record<LeaderCat, Leader> }
 
 /**
- * 把 summary 端點的 JSON 變成兩隊各自的球員數據（依得分排序、取前幾名）。
+ * 把 summary 端點的 JSON 變成兩隊各項的領袖（得分、籃板、助攻、抄截、火鍋、失誤各取最高的一人）。
  * 欄位位置用 ESPN 給的 labels 查，不寫死第幾格——它偶爾會加欄位。
+ * 同分取 ESPN 名單上比較前面的（先發排在前面）。
  */
 export const parseBoxscore = (json: any): TeamBox[] => {
   const teams = json?.boxscore?.players
@@ -224,23 +225,24 @@ export const parseBoxscore = (json: any): TeamBox[] => {
     if (!abbr || !Array.isArray(stat?.labels) || !Array.isArray(stat?.athletes)) {
       throw new Error('boxscore team is missing labels or athletes')
     }
-    const at = (label: string) => {
-      const i = stat.labels.indexOf(label)
-      if (i < 0) throw new Error(`boxscore has no ${label} column`)
-      return i
+    // 得分欄一定要有，沒有就是資料壞了；其他欄缺了只是那一項畫「–」
+    if (stat.labels.indexOf('PTS') < 0) throw new Error('boxscore has no PTS column')
+    // 沒上場的球員 stats 是空陣列
+    const played = stat.athletes.filter((a: any) => Array.isArray(a?.stats) && a.stats.length > 0)
+    const leader = (cat: LeaderCat): Leader => {
+      const i = stat.labels.indexOf(LEADER_LABEL[cat])
+      if (i < 0) return null
+      let best: Leader = null
+      for (const a of played) {
+        const value = Number(a.stats[i] ?? 0)
+        if (!Number.isFinite(value) || value <= 0) continue
+        if (best === null || value > best.value) {
+          best = { name: String(a?.athlete?.shortName ?? a?.athlete?.displayName ?? '?'), value }
+        }
+      }
+      return best
     }
-    const [pts, reb, ast] = [at('PTS'), at('REB'), at('AST')]
-    const players = stat.athletes
-      // 沒上場的球員 stats 是空陣列
-      .filter((a: any) => Array.isArray(a?.stats) && a.stats.length > 0)
-      .map((a: any): PlayerLine => ({
-        name: String(a?.athlete?.shortName ?? a?.athlete?.displayName ?? '?'),
-        pts: Number(a.stats[pts] ?? 0),
-        reb: Number(a.stats[reb] ?? 0),
-        ast: Number(a.stats[ast] ?? 0),
-      }))
-      .sort((a: PlayerLine, b: PlayerLine) => b.pts - a.pts)
-      .slice(0, TOP_PLAYERS)
-    return { abbr: officialAbbr(String(abbr)), players }
+    const leaders = Object.fromEntries(LEADER_CATS.map(cat => [cat, leader(cat)])) as Record<LeaderCat, Leader>
+    return { abbr: officialAbbr(String(abbr)), leaders }
   })
 }

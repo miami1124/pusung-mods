@@ -15,6 +15,8 @@ import {
   type Game,
   type Slate,
   type TeamBox,
+  LEADER_CATS,
+  type LeaderCat,
 } from './espn.ts'
 import { NO_TEAM, TEAM_OPTIONS, teamFromOption } from './teams.ts'
 import { TOTEM_SIZE, totemFor } from './totems.ts'
@@ -264,33 +266,55 @@ const renderDetail = (
       </Text>
     </Box>
   )
-  // 右邊：兩隊各自得分前幾名。資料屬於別場（剛換場、還在抓）就先說讀取中
+  // 右邊：各項領袖，兩隊面對面——左邊客隊（名字靠右、數字），中間項目，右邊主隊（數字、名字）。
+  // 資料屬於別場（剛換場、還在抓）就先說讀取中
   const mineBox = boxState.id === g.id
-  const teamBlock = (abbr: string) => {
-    const team = boxState.teams?.find(t => t.abbr === abbr)
-    if (!team) return null
-    const stat = (id: string, title: string, pick: (p: TeamBox['players'][number]) => number) => (
-      <Box key={id} flexDirection="column" alignItems="flex-end" marginRight={2} flexShrink={0}>
-        <Text dimColor>{title}</Text>
-        {team.players.map((p, i) => (
-          <Text key={`${id}${i}`}>{String(pick(p))}</Text>
+  const catTitle: Record<LeaderCat, string> = {
+    pts: opts.t.pts,
+    reb: opts.t.reb,
+    ast: opts.t.ast,
+    stl: opts.t.stl,
+    blk: opts.t.blk,
+    to: opts.t.to,
+  }
+  const leadersBlock = () => {
+    const away = boxState.teams?.find(t => t.abbr === g.away.abbr)
+    const home = boxState.teams?.find(t => t.abbr === g.home.abbr)
+    if (!away || !home) return null
+    const col = (
+      key: string,
+      align: 'flex-start' | 'flex-end',
+      title: string,
+      bold: boolean,
+      rows: string[],
+      dim: boolean,
+    ) => (
+      <Box key={key} flexDirection="column" alignItems={align} marginRight={2} flexShrink={0}>
+        <Text bold={bold}>{title}</Text>
+        {rows.map((r, i) => (
+          <Text key={`${key}${i}`} bold={!dim} dimColor={dim}>
+            {r}
+          </Text>
         ))}
       </Box>
     )
+    const names = (box: TeamBox) => LEADER_CATS.map(c => (box.leaders[c] ? shortName(box.leaders[c].name) : ''))
+    const values = (box: TeamBox) => LEADER_CATS.map(c => (box.leaders[c] ? String(box.leaders[c].value) : '–'))
     return (
       // 每一欄都不准縮：空間不夠時寧可右邊被裁掉，也不能讓名字折行害數字對不上
-      <Box key={abbr} flexDirection="row" marginLeft={3} flexShrink={0}>
-        <Box key={`names:${abbr}`} flexDirection="column" marginRight={2} flexShrink={0}>
-          <Text bold>{abbr}</Text>
-          {team.players.map((p, i) => (
-            <Text key={`n${i}`} dimColor>
-              {shortName(p.name)}
-            </Text>
-          ))}
-        </Box>
-        {stat('pts', opts.t.pts, p => p.pts)}
-        {stat('reb', opts.t.reb, p => p.reb)}
-        {stat('ast', opts.t.ast, p => p.ast)}
+      <Box key="leaders" flexDirection="row" marginLeft={3} flexShrink={0}>
+        {col(`names:${away.abbr}`, 'flex-end', away.abbr, true, names(away), true)}
+        {col(`values:${away.abbr}`, 'flex-end', ' ', false, values(away), false)}
+        {col(
+          'cats',
+          'flex-start',
+          ' ',
+          false,
+          LEADER_CATS.map(c => catTitle[c]),
+          true,
+        )}
+        {col(`values:${home.abbr}`, 'flex-end', ' ', false, values(home), false)}
+        {col(`names:${home.abbr}`, 'flex-start', home.abbr, true, names(home), true)}
       </Box>
     )
   }
@@ -327,7 +351,7 @@ const renderDetail = (
             <Text color="#d97706">{opts.t.boxFailed(boxState.error)}</Text>
           </Box>
         ) : (
-          [teamBlock(g.away.abbr), teamBlock(g.home.abbr)]
+          leadersBlock()
         )}
       </Box>
     </Box>
