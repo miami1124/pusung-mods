@@ -67,15 +67,15 @@ There are three settings. The desktop app and the terminal share them: change on
 | **Language** | `Auto` | `Auto` shows Traditional Chinese when your computer is on Taiwan time and English everywhere else. Pick `English` or `繁體中文` to force one. |
 | **Spoiler-free** | `Off` | `On` hides the score of finished games. Click **Reveal** on a game, or **Reveal all**. Live games are never hidden. Revealed games are hidden again the next time you open Claude Code. |
 
-**In the desktop app**, click **⚙ Settings** on the band. A row of three buttons opens; click it again to close the row. **Team** opens the 30 teams, and you click the one you want. **Language** and **Spoiler-free** switch to the next option each time you click them.
+Click **⚙ Settings** on the band, in the desktop app or the terminal. A row of three buttons opens; click it again to close the row. **Team** opens the 30 teams, and you click the one you want. **Language** and **Spoiler-free** switch to the next option each time you click them.
 
 ![The settings row on the band](../../docs/settings-en.png)
 
-Until you choose a team, a **Pick your team** button also sits on the band itself. It opens the same 30 teams.
+In the desktop app, until you choose a team, a **Pick your team** button also sits on the band itself. It opens the same 30 teams.
 
 ![Pick your team on the band](../../docs/pick-team-en.png)
 
-**In the terminal**, run `/config` and scroll to the nba-scores-mod rows (`Your team`, `Language`, `Spoiler-free`).
+In the terminal, when the line is too narrow to fit one more game, **⚙ Settings** shrinks to **⚙**. You can also run `/config` and scroll to the nba-scores-mod rows (`Your team`, `Language`, `Spoiler-free`).
 
 ## Team totems
 
@@ -91,12 +91,13 @@ Both show the same games in the same order, with the same controls.
 
 | | Desktop app | Terminal |
 | :-- | :-- | :-- |
-| Layout | A row of cards | One line of text |
+| Layout | A row of cards | One line of text, each game on a gray block |
 | Team totem | Yes | No |
 | Team-colored badge and color bars on your team's game | Yes | Yes |
 | Games that do not fit | `‹` `›` to page | `‹` `›` to page |
 | Score by quarter and top scorers | Yes | Yes |
 | Spoiler-free mode | Yes | Yes |
+| ⚙ Settings on the band | Yes | Yes (also `/config`) |
 
 The terminal can only draw characters, so the totems are desktop only.
 

@@ -34,7 +34,8 @@ const SCOREBOARD = {
   ],
 }
 
-const PROPS = { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 120 }
+// 140 欄：終端機那一行要放得下三場加右邊的「設定／收起」
+const PROPS = { hasSurvey: false, isWorking: false, maxRows: 20, bodyColumns: 140 }
 
 for (const surface of ['desktop', 'terminal'] as const) {
   test(`${surface}：帶子畫得出來，沒有被拒收`, { options: { team: 'MIA Heat' } }, async ($, on) => {
@@ -633,12 +634,79 @@ test('desktop：存在 store 的設定重開後還在，而且蓋過設定選單
   expect(await ui.find({ key: 'nba-scores-mod:setting:team' })).toMatchObject({ props: { label: '球隊：LAL ▾' } })
 })
 
-test('terminal：沒有齒輪，設定走 /config', async ($, on) => {
+test('terminal：帶子上也有設定，三項都用按鈕改', { options: { team: 'MIA Heat', language: 'English' } }, async ($, on) => {
   on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
   on('clock.every', () => ({ value: undefined }))
+  const saved: unknown[] = []
+  on('config.set', (_$: unknown, e: any) => {
+    saved.push([e.key, e.value])
+    return { value: e.value }
+  })
   const ui = await terminalSetup($, on, () => SCOREBOARD, 120)
-  expect(await ui.find({ key: 'nba-scores-mod:collapse' })).toBeDefined()
-  expect(await ui.find({ key: 'nba-scores-mod:settings' })).toBeUndefined()
+  expect(await ui.find({ key: 'nba-scores-mod:settings' })).toMatchObject({ props: { label: '⚙ Settings' } })
+  expect(await ui.find({ key: 'nba-scores-mod:setting:team' })).toBeUndefined()
+
+  await ui.press({ key: 'nba-scores-mod:settings' })
+  expect(await ui.drawn()).toMatchObject({ type: 'Box' })
+  expect(await ui.find({ key: 'nba-scores-mod:setting:team' })).toMatchObject({ props: { label: 'Team: MIA ▾' } })
+  expect(await ui.find({ key: 'nba-scores-mod:setting:language' })).toMatchObject({ props: { label: 'Language: English' } })
+  expect(await ui.find({ key: 'nba-scores-mod:setting:spoilerFree' })).toMatchObject({ props: { label: 'Spoiler-free: Off' } })
+  expect(await ui.find({ key: 'nba-scores-mod:team:LAL' })).toBeUndefined()
+
+  await ui.press({ key: 'nba-scores-mod:setting:spoilerFree' })
+  await ui.press({ key: 'nba-scores-mod:setting:language' })
+  await ui.press({ key: 'nba-scores-mod:setting:team' })
+  expect(await ui.drawn()).toMatchObject({ type: 'Box' })
+  // 31 顆都在（不選 + 30 隊），分成不只一行
+  expect(await ui.find({ key: 'nba-scores-mod:team:none' })).toMatchObject({ props: { label: 'None' } })
+  expect(await ui.find({ key: 'nba-scores-mod:team:MIA' })).toMatchObject({ props: { label: '✓ MIA' } })
+  expect(await ui.find({ key: 'nba-scores-mod:team:WAS' })).toBeDefined()
+  expect(await ui.find({ key: 'nba-scores-mod:team-row:1' })).toBeDefined()
+  await ui.press({ key: 'nba-scores-mod:team:LAL' })
+  expect(await ui.find({ key: 'nba-scores-mod:team:LAL' })).toBeUndefined()
+  expect(saved).toEqual([
+    ['nba-scores-mod.spoilerFree', 'On'],
+    ['nba-scores-mod.language', '繁體中文'],
+    ['nba-scores-mod.team', 'LAL Lakers'],
+  ])
+})
+
+test('terminal：比賽優先，「設定」兩個字會讓位給多一場比賽', { options: { language: 'English' } }, async ($, on) => {
+  on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+  on('clock.every', () => ({ value: undefined }))
+  // 夠寬：三場都在、寫全名、沒有 ›
+  const wide = await terminalSetup($, on, () => SCOREBOARD, 140)
+  expect(await wide.find({ key: 'nba-scores-mod:settings' })).toMatchObject({ props: { label: '⚙ Settings' } })
+  expect(await wide.find({ key: 'nba-scores-mod:next' })).toBeUndefined()
+  const wideTree = JSON.stringify(await wide.drawn())
+  for (const abbr of ['MIA', 'DEN', 'LAL']) expect(wideTree.includes(abbr)).toBe(true)
+})
+
+// 三場要 106 欄才放得下「⚙ Settings」全名；98～104 欄時縮成齒輪就能三場全放、也不用 ›
+for (const [columns, label] of [[100, '⚙'], [106, '⚙ Settings']] as const) {
+  test(`terminal：${String(columns)} 欄時三場全放得下，設定寫成「${label}」`, { options: { language: 'English' } }, async ($, on) => {
+    on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+    on('clock.every', () => ({ value: undefined }))
+    const ui = await terminalSetup($, on, () => SCOREBOARD, columns)
+    const tree = JSON.stringify(await ui.drawn())
+    // 三場都畫出來了（第三場是還沒開打的 LAL @ SAC）
+    expect(await ui.find({ key: 'nba-scores-mod:open:1' })).toBeDefined()
+    expect(await ui.find({ key: 'nba-scores-mod:open:2' })).toBeDefined()
+    expect(tree.includes('SAC')).toBe(true)
+    expect(await ui.find({ key: 'nba-scores-mod:next' })).toBeUndefined()
+    expect(await ui.find({ key: 'nba-scores-mod:settings' })).toMatchObject({ props: { label } })
+  })
+}
+
+test('terminal：視窗很窄時 30 隊也全部排得出來，不會被裁掉', async ($, on) => {
+  on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+  on('clock.every', () => ({ value: undefined }))
+  const ui = await terminalSetup($, on, () => SCOREBOARD, 40)
+  await ui.press({ key: 'nba-scores-mod:settings' })
+  await ui.press({ key: 'nba-scores-mod:setting:team' })
+  expect(await ui.drawn()).toMatchObject({ type: 'Box' })
+  expect(await ui.find({ key: 'nba-scores-mod:team:WAS' })).toBeDefined()
+  expect(await ui.find({ key: 'nba-scores-mod:team-row:4' })).toBeDefined()
 })
 
 // ---- 2026-10-08 外部審查找到的問題 ----
@@ -890,4 +958,24 @@ test('整條收起來之後，不再抓看不到的球員數據', async ($, on) 
   await ui.press({ key: 'nba-scores-mod:collapse' })
   await clock.advance(3 * 60_000)
   expect(summaryFetches).toBe(2)
+})
+
+// 2026-10-14 SAM 的終端機：三場在打、兩場打完，約 160 欄。四場放得下、右邊還有空，
+// 「設定」卻縮成齒輪——因為算場數時每場都替 +N 預留了位置。實際放得下就要寫全名。
+test('terminal：四場加全名放得下時，不要只放齒輪', { options: { language: '繁體中文' } }, async ($, on) => {
+  on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
+  on('clock.every', () => ({ value: undefined }))
+  const slate = {
+    events: [
+      event('11', 'in', '8:52 - 2nd', side('away', 'GSW', '34', [20, 14]), side('home', 'LAL', '34', [18, 16])),
+      event('12', 'in', '11:35 - 2nd', side('away', 'POR', '33', [33, 0]), side('home', 'SAC', '23', [22, 1])),
+      event('13', 'in', '0.0 - OT', side('away', 'IND', '112', [30, 30, 25, 20]), side('home', 'OKC', '114', [28, 30, 25, 20])),
+      event('14', 'post', 'Final', side('away', 'CLE', '116', [30, 30, 25, 31]), side('home', 'ORL', '132', [28, 30, 35, 39])),
+      event('15', 'post', 'Final', side('away', 'NYK', '98', [30, 30, 25, 13]), side('home', 'TOR', '148', [28, 30, 45, 45])),
+    ],
+  }
+  const ui = await terminalSetup($, on, () => slate, 160)
+  const tree = JSON.stringify(await ui.drawn())
+  expect(['11', '12', '13', '14'].every(id => tree.includes(`nba-scores-mod:open:${id}`))).toBe(true)
+  expect(await ui.find({ key: 'nba-scores-mod:settings' })).toMatchObject({ props: { label: '⚙ 設定' } })
 })

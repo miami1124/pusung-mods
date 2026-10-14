@@ -77,8 +77,20 @@ const TICK_MS = 15_000
 const CONFIG_MISS_EVERY = 10
 /** 終端機寬度不到這麼多格時，點開單場的球員數據改放到每節比分下面 */
 const DETAIL_WIDE_COLUMNS = 96
-/** 終端機：兩場之間「  │  」佔幾格 */
-const CHIP_GAP = 5
+/** 終端機：整條帶子離左邊空幾格，徽章才不會貼著視窗邊 */
+const TERM_INDENT = 1
+/** 終端機：決定「設定」要不要寫全名時，替得分的 +N 留的餘裕（一個 +3 的寬度） */
+const FLASH_SLACK = 3
+/** 終端機：兩場之間空幾格（每場自己有灰底，不再用 │ 隔開） */
+const CHIP_GAP = 2
+/**
+ * 終端機的灰底：比賽一種、設定按鈕一種，跟桌面版「比賽是框、設定是實心灰塊」一樣分得出來。
+ * 字用終端機預設色，所以底色要跟著 Claude Code 的深色／淺色主題換，不然淺色終端機會看不到字。
+ */
+const TERM_BG = {
+  dark: { chip: '#2b2b2b', button: '#454545' },
+  light: { chip: '#eeeeee', button: '#d4d4d4' },
+}
 const BADGE_TEXT = ' NBA '
 
 /** 這段字在終端機佔幾格：中文和全形符號算兩格，其餘一格 */
@@ -87,7 +99,6 @@ const textWidth = (s: string): number => {
   for (const ch of s) n += (ch.codePointAt(0) ?? 0) > 0x2e7f ? 2 : 1
   return n
 }
-
 
 /** 防雷時比分變成這個。用實心方塊而不是 ??? ，一眼就看得出是「被遮住」不是「沒資料」 */
 const MASK = '███'
@@ -386,6 +397,8 @@ export const register: Register = (on, options) => {
   let collapsed = false
   /** 桌面版：設定那一排（球隊／語言／防雷）有沒有打開 */
   let settingsOpen = false
+  /** 終端機用深色還是淺色的灰底，看 Claude Code 的主題 */
+  let termBg = TERM_BG.dark
   /** 桌面版：設定那一排底下的 30 隊按鈕有沒有展開。只放記憶體，選完就收 */
   let teamOpen = false
   /** 那一排從第幾場開始畫（按 ‹ › 左右翻） */
@@ -414,6 +427,12 @@ export const register: Register = (on, options) => {
 
     collapsed = (await $.store.get(COLLAPSED_KEY)) === true
     settingsOpen = (await $.store.get(SETTINGS_OPEN_KEY)) === true
+    try {
+      const theme = (await $.config.list()).find(row => row.key === 'theme')?.value
+      if (typeof theme === 'string' && theme.startsWith('light')) termBg = TERM_BG.light
+    } catch {
+      // 讀不到主題就當深色，深色終端機是大多數
+    }
     const kept = await $.store.get(OVERRIDES_KEY)
     if (kept !== null && typeof kept === 'object') {
       for (const field of FIELDS) {
@@ -727,9 +746,7 @@ export const register: Register = (on, options) => {
       }
 
       // 防雷遮住的那場不能畫明細：點開時還在打、後來打完了，明細會把最終比分洩漏出來
-      const opened = all.find(
-        g => g.id === openId && g.state !== 'pre' && !isMasked(g, spoilerFree(), revealed),
-      )
+      const opened = all.find(g => g.id === openId && g.state !== 'pre' && !isMasked(g, spoilerFree(), revealed))
 
       // 設定那一排全部用按鈕，不用下拉：桌面版不接 Select 的選取（2026-10-13 實測，
       // 紀錄寫 ui_select not handled），按鈕才確定會動。
@@ -738,7 +755,9 @@ export const register: Register = (on, options) => {
         <Button
           key={`nba-scores-mod:setting:${field}`}
           label={t.settingValue(label, value)}
-          onPress={() => saveSetting($, held, field, choices[(choices.indexOf(value) + 1) % choices.length], applyOptions)}
+          onPress={() =>
+            saveSetting($, held, field, choices[(choices.indexOf(value) + 1) % choices.length], applyOptions)
+          }
         />
       )
       // 球隊有 30 個，一顆一顆列出來，點哪隊就選哪隊
@@ -757,7 +776,8 @@ export const register: Register = (on, options) => {
       const currentOption = (value: unknown, choices: string[]) =>
         typeof value === 'string' && choices.includes(value) ? value : choices[0]
       // 球隊也可能是從設定檔來的，那時要換算成選單上的那一項
-      const currentTeamOption = TEAM_OPTIONS.find(o => teamFromOption(o) === config.team && config.team !== '') ?? NO_TEAM
+      const currentTeamOption =
+        TEAM_OPTIONS.find(o => teamFromOption(o) === config.team && config.team !== '') ?? NO_TEAM
 
       // 一整排、不換行：左邊固定（徽章、往前翻），中間是小卡（放不下的由右邊裁掉），
       // 右邊固定（往後翻、警告、收起）。桌面版的框不能真的用手滑，所以用 ‹ › 按鈕翻。
@@ -799,12 +819,8 @@ export const register: Register = (on, options) => {
                   }}
                 />
               ) : null}
-              {lastError !== undefined ? (
-                <Text color="#d97706">{t.stale(age)}</Text>
-              ) : null}
-              {configProblems.length > 0 ? (
-                <Text color="#d97706">{t.configProblem(configProblems[0])}</Text>
-              ) : null}
+              {lastError !== undefined ? <Text color="#d97706">{t.stale(age)}</Text> : null}
+              {configProblems.length > 0 ? <Text color="#d97706">{t.configProblem(configProblems[0])}</Text> : null}
               {hidden > 0 ? (
                 <Button
                   key="nba-scores-mod:reveal-all"
@@ -866,7 +882,12 @@ export const register: Register = (on, options) => {
                 }}
               />
               {cycle('language', t.settingLanguage, LANG_OPTIONS, currentOption(option('language'), LANG_OPTIONS))}
-              {cycle('spoilerFree', t.settingSpoilerFree, SPOILER_OPTIONS, currentOption(option('spoilerFree'), SPOILER_OPTIONS))}
+              {cycle(
+                'spoilerFree',
+                t.settingSpoilerFree,
+                SPOILER_OPTIONS,
+                currentOption(option('spoilerFree'), SPOILER_OPTIONS),
+              )}
               {held.saveProblem ? <Text color="#d97706">{t.settingsNotSaved}</Text> : null}
             </Box>
           ) : null}
@@ -881,12 +902,13 @@ export const register: Register = (on, options) => {
     }
 
     // ---- 終端機：一行橫排，內容和操作跟桌面版一樣 ----
-    // 終端機畫不了圖騰（只能排字），也不放選隊選單。選了球隊的話，徽章換成隊色、
-    // 自己球隊那場兩邊各加一條隊色，顏色跟桌面版是同一套；那一場照樣排最前面。
+    // 終端機畫不了圖騰（只能排字）。選了球隊的話，徽章換成隊色、自己球隊那場兩邊
+    // 各加一條隊色，顏色跟桌面版是同一套；那一場照樣排最前面。
+    // 設定跟桌面版一樣從帶子上的「⚙ 設定」改：/config 也改得到，但很少人知道要去那裡找。
 
     const { Box, Button, Text } = await $.ui.resolve(e)
     const now = await $.clock.now()
-    const columns = e.props.bodyColumns ?? e.viewport?.columns ?? 80
+    const columns = (e.props.bodyColumns ?? e.viewport?.columns ?? 80) - TERM_INDENT
     const below = await next(e)
     const totem = totemFor(config.team)
     const badge = (
@@ -899,7 +921,9 @@ export const register: Register = (on, options) => {
       return (
         <Box flexDirection="column">
           {below}
-          <Text dimColor>{lastError ? t.fetchFailed(lastError) : t.loading}</Text>
+          <Box paddingLeft={TERM_INDENT}>
+            <Text dimColor>{lastError ? t.fetchFailed(lastError) : t.loading}</Text>
+          </Box>
         </Box>
       )
     }
@@ -908,7 +932,7 @@ export const register: Register = (on, options) => {
       return (
         <Box flexDirection="column">
           {below}
-          <Box flexDirection="row" gap={2}>
+          <Box flexDirection="row" gap={2} paddingLeft={TERM_INDENT}>
             {badge}
             {slateMode(slate) === 'live' ? <Text color={ACCENT}>● LIVE</Text> : null}
             <Button key="nba-scores-mod:expand" plain dimColor label={t.expand} onPress={() => setCollapsed(false)} />
@@ -932,42 +956,73 @@ export const register: Register = (on, options) => {
       return used.reduce((n, s) => n + textWidth(s), 0) + Math.max(0, used.length - 1) * gap
     }
     const leftWidth = widthOf([BADGE_TEXT, showingNext ? t.next : '', dateNote, start > 0 ? '‹' : ''], 2)
-    // › 不管有沒有都先留位置，免得出現時擠掉一場
-    const rightWidth = widthOf(['›', staleNote, configNote, revealAll, t.collapse], 2)
-    const chipWidth = (g: Game) => {
+    // 右邊那幾顆佔多寬，看兩件事：要不要留 › 的位置、「設定」寫全名還是只放齒輪
+    const SETTINGS_SHORT = '⚙'
+    const rightWidthOf = (settingsLabel: string, withNext: boolean) =>
+      widthOf([withNext ? '›' : '', staleNote, configNote, revealAll, settingsLabel, t.collapse], 2)
+    const chipWidth = (g: Game, reserveFlash = true) => {
       const started = g.state !== 'pre'
       const masked = isMasked(g, spoilerFree(), revealed)
       const score = (n: number) => (!started ? '' : masked ? MASK : String(n))
       const bar = involves(g, config.team) ? '▍' : ''
-      return widthOf(
-        [
-          g.state === 'in' ? '●' : '',
-          bar,
-          g.away.abbr,
-          score(g.away.score),
-          '–',
-          bar,
-          g.home.abbr,
-          score(g.home.score),
-          chipDetail(g, showingNext),
-          masked ? t.reveal : started ? '▾' : '',
-          // 得分時會多出「+3」，先留位置，不然一得分整排就重排
-          g.state === 'in' ? '+3' : '',
-        ],
-        1,
+      // 灰底左右各留一格
+      return (
+        2 +
+        widthOf(
+          [
+            g.state === 'in' ? '●' : '',
+            bar,
+            g.away.abbr,
+            score(g.away.score),
+            '–',
+            bar,
+            g.home.abbr,
+            score(g.home.score),
+            chipDetail(g, showingNext),
+            masked ? t.reveal : started ? '▾' : '',
+            // 得分時會多出「+3」，先留位置，不然一得分整排就重排
+            reserveFlash && g.state === 'in' ? '+3' : '',
+          ],
+          1,
+        )
       )
     }
-    const room = columns - leftWidth - rightWidth - 2 * 2
-    const shown: Game[] = []
-    let used = 0
-    for (const g of all.slice(start)) {
-      const w = chipWidth(g) + (shown.length > 0 ? CHIP_GAP : 0)
-      // 再窄也至少畫一場
-      if (shown.length > 0 && used + w > room) break
-      shown.push(g)
-      used += w
+    const rest = all.slice(start)
+    const fit = (rightWidth: number): Game[] => {
+      const room = columns - leftWidth - rightWidth - 2 * 2
+      const fits: Game[] = []
+      let used = 0
+      for (const g of rest) {
+        const w = chipWidth(g) + (fits.length > 0 ? CHIP_GAP : 0)
+        // 再窄也至少畫一場
+        if (fits.length > 0 && used + w > room) break
+        fits.push(g)
+        used += w
+      }
+      return fits
+    }
+    // 比賽優先：能多放一場就多放一場，「設定」兩個字是第一個讓位的。
+    // 剩下的場次全放得下時不需要 ›，那個位置也拿來用；放不下才留 › 的位置（免得它出現時擠掉一場）。
+    let settingsLabel = t.settings
+    let shown = fit(rightWidthOf(t.settings, false))
+    if (shown.length < rest.length) {
+      shown = fit(rightWidthOf(SETTINGS_SHORT, false))
+      settingsLabel = SETTINGS_SHORT
+      if (shown.length < rest.length) {
+        const wide = fit(rightWidthOf(t.settings, true))
+        shown = fit(rightWidthOf(SETTINGS_SHORT, true))
+        if (wide.length === shown.length) settingsLabel = t.settings
+      }
     }
     const hasMore = start + shown.length < all.length
+    // 上面算場數時，每場進行中的比賽都預留了 +N 的位置，所以畫出來常常還有空。
+    // 縮成齒輪之後，如果實際寬度留一點得分的餘裕還放得下全名，就寫回全名。
+    // 很多場同時得分時最右邊可能被裁掉幾秒，比為了這個一直只放齒輪划算。
+    if (settingsLabel === SETTINGS_SHORT) {
+      const actual = shown.reduce((n, g, i) => n + chipWidth(g, false) + (i > 0 ? CHIP_GAP : 0), 0)
+      const fullRoom = columns - leftWidth - rightWidthOf(t.settings, hasMore) - 2 * 2
+      if (actual + FLASH_SLACK <= fullRoom) settingsLabel = t.settings
+    }
 
     const chip = (g: Game) => {
       const mine = involves(g, config.team)
@@ -999,7 +1054,7 @@ export const register: Register = (on, options) => {
         )
       }
       return (
-        <Box key={g.id} flexDirection="row" gap={1}>
+        <Box key={g.id} flexDirection="row" gap={1} paddingX={1} backgroundColor={termBg.chip}>
           {g.state === 'in' ? <Text color={ACCENT}>●</Text> : null}
           {side('away')}
           <Text dimColor>{started ? '–' : '@'}</Text>
@@ -1020,9 +1075,9 @@ export const register: Register = (on, options) => {
                 openId = g.id === openId ? undefined : g.id
                 $.ui.invalidate('ui.render')
                 if (openId !== undefined && (boxState.id !== openId || boxState.error !== undefined)) {
-                    const picked = openId
-                    void refreshBox($, boxState, picked, () => openId === picked, backoff)
-                  }
+                  const picked = openId
+                  void refreshBox($, boxState, picked, () => openId === picked, backoff)
+                }
               }}
             />
           ) : null}
@@ -1042,68 +1097,150 @@ export const register: Register = (on, options) => {
     }
 
     // 防雷遮住的那場不能畫明細：點開時還在打、後來打完了，明細會把最終比分洩漏出來
-      const opened = all.find(
-        g => g.id === openId && g.state !== 'pre' && !isMasked(g, spoilerFree(), revealed),
+    const opened = all.find(g => g.id === openId && g.state !== 'pre' && !isMasked(g, spoilerFree(), revealed))
+    // 語言、防雷：點一下換下一個選項
+    const cycle = (field: Field, label: string, choices: string[]) => {
+      const raw = option(field)
+      const value = typeof raw === 'string' && choices.includes(raw) ? raw : choices[0]
+      return (
+        <Box paddingX={1} backgroundColor={termBg.button}>
+          <Button
+            key={`nba-scores-mod:setting:${field}`}
+            plain
+            label={t.settingValue(label, value)}
+            onPress={() =>
+              saveSetting($, held, field, choices[(choices.indexOf(value) + 1) % choices.length], applyOptions)
+            }
+          />
+        </Box>
       )
+    }
+    // 30 隊照視窗寬度排成幾行（終端機的一行放不下就會被裁掉，不會自己換行）
+    const TEAM_GAP = 2
+    const teamRows: string[][] = [[]]
+    let rowWidth = 0
+    for (const o of TEAM_OPTIONS) {
+      // 每顆都留打勾的位置，選了之後不會整排重排
+      const w = textWidth(`✓ ${o === NO_TEAM ? t.noTeam : teamFromOption(o)}`) + 2 + TEAM_GAP
+      if (rowWidth + w > columns && teamRows[teamRows.length - 1].length > 0) {
+        teamRows.push([])
+        rowWidth = 0
+      }
+      teamRows[teamRows.length - 1].push(o)
+      rowWidth += w
+    }
     return (
       <Box flexDirection="column">
         {below}
-        <Box flexDirection="row" gap={2}>
-          {badge}
-          {showingNext ? <Text dimColor>{t.next}</Text> : null}
-          {dateNote !== '' ? <Text color="#d97706">{dateNote}</Text> : null}
-          {start > 0 ? (
+        <Box flexDirection="column" paddingLeft={TERM_INDENT}>
+          <Box flexDirection="row" gap={2}>
+            {badge}
+            {showingNext ? <Text dimColor>{t.next}</Text> : null}
+            {dateNote !== '' ? <Text color="#d97706">{dateNote}</Text> : null}
+            {start > 0 ? (
+              <Button
+                key="nba-scores-mod:prev"
+                plain
+                label="‹"
+                onPress={() => {
+                  // 往回翻一頁的場數跟現在這頁一樣多（每場寬度差不多）
+                  offset = Math.max(0, start - Math.max(1, shown.length))
+                  $.ui.invalidate('ui.render')
+                }}
+              />
+            ) : null}
+            {all.length === 0 ? <Text dimColor>{t.noGames}</Text> : null}
+            {shown.map(g => chip(g))}
+            {hasMore ? (
+              <Button
+                key="nba-scores-mod:next"
+                plain
+                label="›"
+                onPress={() => {
+                  offset = start + shown.length
+                  $.ui.invalidate('ui.render')
+                }}
+              />
+            ) : null}
+            {staleNote !== '' ? <Text color="#d97706">{staleNote}</Text> : null}
+            {configNote !== '' ? <Text color="#d97706">{configNote}</Text> : null}
+            {revealAll !== '' ? (
+              <Button
+                key="nba-scores-mod:reveal-all"
+                plain
+                label={revealAll}
+                onPress={() => {
+                  for (const g of all) revealed.add(g.id)
+                  $.ui.invalidate('ui.render')
+                }}
+              />
+            ) : null}
             <Button
-              key="nba-scores-mod:prev"
+              key="nba-scores-mod:settings"
               plain
-              label="‹"
+              dimColor
+              label={settingsLabel}
               onPress={() => {
-                // 往回翻一頁的場數跟現在這頁一樣多（每場寬度差不多）
-                offset = Math.max(0, start - Math.max(1, shown.length))
+                settingsOpen = !settingsOpen
+                teamOpen = false
+                void $.store.set(SETTINGS_OPEN_KEY, settingsOpen)
                 $.ui.invalidate('ui.render')
               }}
             />
-          ) : null}
-          {all.length === 0 ? <Text dimColor>{t.noGames}</Text> : null}
-          {shown.flatMap((g, i) =>
-            i === 0
-              ? [chip(g)]
-              : [
-                  <Text key={`sep:${g.id}`} dimColor>
-                    │
-                  </Text>,
-                  chip(g),
-                ],
-          )}
-          {hasMore ? (
             <Button
-              key="nba-scores-mod:next"
+              key="nba-scores-mod:collapse"
               plain
-              label="›"
-              onPress={() => {
-                offset = start + shown.length
-                $.ui.invalidate('ui.render')
-              }}
+              dimColor
+              label={t.collapse}
+              onPress={() => setCollapsed(true)}
             />
+          </Box>
+          {settingsOpen ? (
+            // 跟上面的比賽空一行，不然黏在一起
+            <Box flexDirection="row" gap={2} marginTop={1}>
+              <Box paddingX={1} backgroundColor={termBg.button}>
+                <Button
+                  key="nba-scores-mod:setting:team"
+                  plain
+                  label={`${t.settingValue(t.settingTeam, config.team === '' ? t.noTeam : config.team)} ${teamOpen ? '▴' : '▾'}`}
+                  onPress={() => {
+                    teamOpen = !teamOpen
+                    $.ui.invalidate('ui.render')
+                  }}
+                />
+              </Box>
+              {cycle('language', t.settingLanguage, LANG_OPTIONS)}
+              {cycle('spoilerFree', t.settingSpoilerFree, SPOILER_OPTIONS)}
+              {held.saveProblem ? <Text color="#d97706">{t.settingsNotSaved}</Text> : null}
+            </Box>
           ) : null}
-          {staleNote !== '' ? <Text color="#d97706">{staleNote}</Text> : null}
-          {configNote !== '' ? <Text color="#d97706">{configNote}</Text> : null}
-          {revealAll !== '' ? (
-            <Button
-              key="nba-scores-mod:reveal-all"
-              plain
-              label={revealAll}
-              onPress={() => {
-                for (const g of all) revealed.add(g.id)
-                $.ui.invalidate('ui.render')
-              }}
-            />
-          ) : null}
-          <Button key="nba-scores-mod:collapse" plain dimColor label={t.collapse} onPress={() => setCollapsed(true)} />
+          {settingsOpen && teamOpen
+            ? teamRows.map((row, i) => (
+                <Box key={`nba-scores-mod:team-row:${String(i)}`} flexDirection="row" gap={TEAM_GAP} marginTop={1}>
+                  {row.map(o => {
+                    const label = o === NO_TEAM ? t.noTeam : teamFromOption(o)
+                    return (
+                      <Box key={`nba-scores-mod:team-pill:${label}`} paddingX={1} backgroundColor={termBg.button}>
+                        <Button
+                          key={`nba-scores-mod:team:${o === NO_TEAM ? 'none' : label}`}
+                          plain
+                          label={teamFromOption(o) === config.team ? `✓ ${label}` : label}
+                          onPress={() => {
+                            teamOpen = false
+                            $.ui.invalidate('ui.render')
+                            return saveSetting($, held, 'team', o, applyOptions)
+                          }}
+                        />
+                      </Box>
+                    )
+                  })}
+                </Box>
+              ))
+            : null}
+          {opened
+            ? renderDetail({ Box, Text }, opened, boxState, { wide: columns >= DETAIL_WIDE_COLUMNS, gapTop: 0, t })
+            : null}
         </Box>
-        {opened
-          ? renderDetail({ Box, Text }, opened, boxState, { wide: columns >= DETAIL_WIDE_COLUMNS, gapTop: 0, t })
-          : null}
       </Box>
     )
   })
