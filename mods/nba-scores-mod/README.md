@@ -19,7 +19,7 @@ Live NBA scores in a thin band above the Claude Code prompt. Works in the termin
 ## Features
 
 - **Live scores**, refreshed every 30 seconds while a game is on. Live games come first.
-- **Pick your team** and its games move to the front. In the desktop app your team also gets its own totem and team-colored badge.
+- **Pick your team** and its games move to the front. The badge takes your team's colors, and in the desktop app your team also gets its own totem.
 - **Score changes are easy to catch**: the old score shows with `+2` for a few seconds, then switches to the new one.
 - **Open any game** (`▾`) for the score by quarter and each team's top scorers.
 - **Spoiler-free mode** (off by default) hides final scores until you ask for them.
@@ -59,11 +59,11 @@ Restart Claude Code and the band is gone. The mod writes no files unless you tur
 
 ## Settings
 
-There are three settings. The desktop app and the terminal keep their own copies, so set them once in each place you use.
+There are three settings. The desktop app and the terminal share them: change one in either place and the other picks it up the next time you open it.
 
 | Setting | Default | What it does |
 | :-- | :-- | :-- |
-| **Team** | `None` | Your team's games are listed first. In the desktop app the badge takes your team's colors and a small totem appears next to it. |
+| **Team** | `None` | Your team's games are listed first and the badge takes your team's colors. In the desktop app a small totem also appears next to it. |
 | **Language** | `Auto` | `Auto` shows Traditional Chinese when your computer is on Taiwan time and English everywhere else. Pick `English` or `繁體中文` to force one. |
 | **Spoiler-free** | `Off` | `On` hides the score of finished games. Click **Reveal** on a game, or **Reveal all**. Live games are never hidden. Revealed games are hidden again the next time you open Claude Code. |
 
@@ -92,7 +92,8 @@ Both show the same games in the same order, with the same controls.
 | | Desktop app | Terminal |
 | :-- | :-- | :-- |
 | Layout | A row of cards | One line of text |
-| Team totem and team-colored badge | Yes | No (the badge is always red) |
+| Team totem | Yes | No |
+| Team-colored badge and color bars on your team's game | Yes | Yes |
 | Games that do not fit | `‹` `›` to page | `‹` `›` to page |
 | Score by quarter and top scorers | Yes | Yes |
 | Spoiler-free mode | Yes | Yes |

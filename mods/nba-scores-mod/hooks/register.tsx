@@ -881,15 +881,16 @@ export const register: Register = (on, options) => {
     }
 
     // ---- 終端機：一行橫排，內容和操作跟桌面版一樣 ----
-    // 終端機畫不了圖騰（只能排字），所以這邊不做球隊客製：徽章一律 NBA 紅、
-    // 也不放選隊選單。在設定選單或桌面版選的球隊仍然會排在最前面。
+    // 終端機畫不了圖騰（只能排字），也不放選隊選單。選了球隊的話，徽章換成隊色、
+    // 自己球隊那場兩邊各加一條隊色，顏色跟桌面版是同一套；那一場照樣排最前面。
 
     const { Box, Button, Text } = await $.ui.resolve(e)
     const now = await $.clock.now()
     const columns = e.props.bodyColumns ?? e.viewport?.columns ?? 80
     const below = await next(e)
+    const totem = totemFor(config.team)
     const badge = (
-      <Text bold color={BADGE_FG} backgroundColor={BADGE_BG}>
+      <Text bold color={totem?.badgeFg ?? BADGE_FG} backgroundColor={totem?.badgeBg ?? BADGE_BG}>
         {BADGE_TEXT}
       </Text>
     )
@@ -937,12 +938,15 @@ export const register: Register = (on, options) => {
       const started = g.state !== 'pre'
       const masked = isMasked(g, spoilerFree(), revealed)
       const score = (n: number) => (!started ? '' : masked ? MASK : String(n))
+      const bar = involves(g, config.team) ? '▍' : ''
       return widthOf(
         [
           g.state === 'in' ? '●' : '',
+          bar,
           g.away.abbr,
           score(g.away.score),
           '–',
+          bar,
           g.home.abbr,
           score(g.home.score),
           chipDetail(g, showingNext),
@@ -966,6 +970,7 @@ export const register: Register = (on, options) => {
     const hasMore = start + shown.length < all.length
 
     const chip = (g: Game) => {
+      const mine = involves(g, config.team)
       const masked = isMasked(g, spoilerFree(), revealed)
       const started = g.state !== 'pre'
       // 打完的比賽：贏的那邊亮、輸的那邊暗。遮住時不能洩漏
@@ -977,6 +982,7 @@ export const register: Register = (on, options) => {
         const flash = flashOf(g.id, which, now)
         return (
           <Box flexDirection="row" gap={1}>
+            {mine ? <Text color={teamColor(team)}>▍</Text> : null}
             <Text bold={!lost} dimColor={lost}>
               {team.abbr}
             </Text>

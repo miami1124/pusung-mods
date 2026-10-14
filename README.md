@@ -15,7 +15,7 @@ Live NBA scores above the prompt, in the terminal and the desktop app.
 ![nba-scores-mod in the terminal](docs/terminal-en.png)
 
 - Live scores every 30 seconds, live games first
-- Pick your team; in the desktop app it gets its own totem and team color
+- Pick your team: the badge takes its colors, and in the desktop app it also gets its own totem
 - Open any game for the score by quarter and top scorers
 - Optional spoiler-free mode
 - English and Traditional Chinese

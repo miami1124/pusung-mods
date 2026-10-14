@@ -296,15 +296,18 @@ const terminalSetup = async ($: any, on: any, scoreboard: () => unknown, columns
   })
 }
 
-test('terminal：徽章固定 NBA 紅、沒有舊的標題句、點開看得到每節比分', { options: { team: 'MIA Heat' } }, async ($, on) => {
+test('terminal：徽章跟著球隊換色、沒有舊的標題句、點開看得到每節比分', { options: { team: 'MIA Heat' } }, async ($, on) => {
   on('clock.now', () => ({ value: Date.parse('2026-10-06T23:30Z') }))
   on('clock.every', () => ({ value: undefined }))
   const ui = await terminalSetup($, on, () => SCOREBOARD, 120)
   const tree = JSON.stringify(await ui.drawn())
-  // 選了熱火，徽章還是 NBA 紅，不跟著球隊換色
+  // 選了熱火，徽章換成熱火的顏色，跟桌面版同一套
   expect(await ui.find({ type: 'Text', text: 'NBA' })).toMatchObject({
-    props: { backgroundColor: '#A32D2D', color: '#FCEBEB' },
+    props: { backgroundColor: '#98002E', color: '#FCEBEB' },
   })
+  // 熱火那場兩邊各有一條隊色（主色太暗時用副色，跟桌面版同一個規則）
+  expect(tree.split('▍').length - 1).toBe(2)
+  expect(await ui.find({ type: 'Text', text: '▍' })).toMatchObject({ props: { color: '#f9a01b' } })
   // 舊版的「今日戰報／LIVE N 場／N 分鐘前更新」都不要了
   for (const gone of ['戰報', '已結束', '前更新', '剛更新']) expect(tree.includes(gone)).toBe(false)
   // 正在打的那場（熱火）排最前面：它的 ● 出現在打完那場的 Final 之前
