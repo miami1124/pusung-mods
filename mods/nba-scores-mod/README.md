@@ -21,7 +21,7 @@ Live NBA scores in a thin band above the Claude Code prompt. Works in the termin
 - **Live scores**, refreshed every 30 seconds while a game is on. Live games come first.
 - **Pick your team** and its games move to the front. The badge takes your team's colors, and in the desktop app your team also gets its own totem.
 - **Score changes are easy to catch**: the old score shows with `+2` for a few seconds, then switches to the new one.
-- **Open any game** (`▾`) for the score by quarter and each team's top scorers.
+- **Open any game** (`▾`) for the score by quarter and each team's five top scorers, with their points, rebounds and assists.
 - **Spoiler-free mode** (off by default) hides final scores until you ask for them.
 - **English and Traditional Chinese.**
 - **Zero model tokens.** It never calls a model and never reads your prompts or code. It fetches a public scoreboard and draws it.
@@ -95,7 +95,7 @@ Both show the same games in the same order, with the same controls.
 | Team totem | Yes | No |
 | Team-colored badge and color bars on your team's game | Yes | Yes |
 | Games that do not fit | `‹` `›` to page | `‹` `›` to page |
-| Score by quarter and top scorers | Yes | Yes |
+| Score by quarter and each team's five top scorers | Yes | Yes |
 | Spoiler-free mode | Yes | Yes |
 | ⚙ Settings on the band | Yes | Yes (also `/config`) |
 
