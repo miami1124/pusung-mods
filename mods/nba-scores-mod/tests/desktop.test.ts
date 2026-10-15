@@ -503,6 +503,10 @@ for (const surface of ['desktop', 'terminal'] as const) {
     for (const s of ['"30"', '"9"', '"6"', '"1"', '"–"', '"3"']) expect(awayValues.includes(s)).toBe(true)
     // 沒上場的球員不能出現
     expect(awayNames.includes('K. Anderson')).toBe(false)
+    // 每一行都要有字（沒人的那項放不換行空白），空字串在桌面版會被吃掉，名字就跟數字錯開
+    const nameRows = ((await ui.find({ key: 'names:UTA' })) as any).children.slice(1)
+    expect(nameRows.length).toBe(6)
+    for (const row of nameRows) expect(JSON.stringify(row).includes('""')).toBe(false)
     // 主隊（DEN）：全部都是 Jokic，數字照順序
     expect((await col('names:DEN')).includes('N. Jokic')).toBe(true)
     for (const s of ['"28"', '"12"', '"10"', '"2"']) expect((await col('values:DEN')).includes(s)).toBe(true)

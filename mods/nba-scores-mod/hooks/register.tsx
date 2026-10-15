@@ -298,7 +298,9 @@ const renderDetail = (
         ))}
       </Box>
     )
-    const names = (box: TeamBox) => LEADER_CATS.map(c => (box.leaders[c] ? shortName(box.leaders[c].name) : ''))
+    // 沒人的那一項名字要放一個不換行空白，不能放空字串：桌面版會把空的那行吃掉，
+    // 下面的名字整排往上跳一格，跟數字對不上（2026-10-15 SAM 實機看到：快艇沒人蓋火鍋，失誤那行的名字跑到火鍋那行）
+    const names = (box: TeamBox) => LEADER_CATS.map(c => (box.leaders[c] ? shortName(box.leaders[c].name) : '\u00a0'))
     const values = (box: TeamBox) => LEADER_CATS.map(c => (box.leaders[c] ? String(box.leaders[c].value) : '–'))
     return (
       // 每一欄都不准縮：空間不夠時寧可右邊被裁掉，也不能讓名字折行害數字對不上
